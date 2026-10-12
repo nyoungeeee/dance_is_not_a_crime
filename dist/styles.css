@@ -201,7 +201,9 @@ dialog::backdrop{background:#000b}
 .button.danger{background:#ab6450;color:#fff}
 .order-progress{display:flex;gap:6px;margin:23px 0}
 .order-progress span{flex:1;text-align:center;font-size:10px;padding:9px 0;background:#313b26;border-radius:3px;color:#c4d2af}
-.order-progress span:first-child{background:var(--lime);color:#19210f}
+.order-progress span.done{background:#3d4a24;color:var(--lime)}
+.order-progress span.current{background:var(--lime);color:#19210f;font-weight:700}
+.order-progress.is-cancel span{background:#3a2c22;color:#f0c9a8}
 .order-artwork{margin:20px 0;border:1px solid #556744}
 .order-event-select{display:block;width:100%;max-width:100%;padding:11px;margin-top:10px;font:inherit;font-size:12px;border:1px solid #61744d;background:#1b2314;color:#eef2e4;border-radius:3px}
 .order-field{display:block;font-size:11px;color:#bfcdaf;margin-top:23px}
