@@ -1,6 +1,6 @@
 import {validateMessage} from './messages.mjs?v=24';
-import {EVENTS, validateNickname, validateOrder, pickupDateLabel} from './account-state.mjs?v=13';
-import {GROUP_BUY, ordersOpen, ORDER_STATUS, paymentWindowOpen, parseQuantity, orderAmount, getOrderCountdown} from './group-buy.mjs?v=13';
+import {EVENTS, validateNickname, validateOrder, pickupDateLabel} from './account-state.mjs?v=14';
+import {GROUP_BUY, ordersOpen, ORDER_STATUS, paymentWindowOpen, parseQuantity, orderAmount, getOrderCountdown} from './group-buy.mjs?v=14';
 import {api} from './api.mjs?v=2';
 const $ = selector => document.querySelector(selector);
 const modal = $('#modal'), content = $('#modal-content'), form = $('#order-form');
@@ -17,6 +17,9 @@ const nickname = () => me.user?.nickname ?? null;
 const CLOSED = ['cancelled','refunded','picked_up'];
 const findOrder = id => me.orders.find(order => order.id === id) ?? null;
 const openOrders = () => me.orders.filter(order => !CLOSED.includes(order.status));
+const isPaid = order => ['paid','picked_up'].includes(order.status);
+/** 입금 확인된 주문에 붙이는 현장 배부 공지 오픈카톡방 버튼 */
+const openChatLink = () => `<a class="button secondary openchat-link" href="${GROUP_BUY.openChatUrl}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3C6.5 3 2 6.4 2 10.6c0 2.7 1.8 5 4.5 6.4l-.9 3.5 4-2.4c.8.1 1.6.2 2.4.2 5.5 0 10-3.5 10-7.7S17.5 3 12 3Z"/></svg>현장 배부 공지 오픈카톡방</a>`;
 const won = amount => `${amount.toLocaleString('ko-KR')}원`;
 async function loadMe() {
   try {me = await api('GET','/api/me');}
@@ -84,6 +87,7 @@ function refresh() {
     const pending = openOrders().filter(order => order.status === 'payment_pending');
     $('#order-list-status').textContent = pending.length ? `입금 대기 ${pending.length}건 · ${won(pending.reduce((sum, order) => sum + order.totalAmount, 0))}` : `${nickname()} 님의 주문 ${me.orders.length}건`;
     $('#order-cards').innerHTML = me.orders.map(orderCard).join('');
+    $('#openchat-notice').hidden = !me.orders.some(isPaid);
     $('#add-order').hidden = !open;
     $('#order-list-note').textContent = open ? '주문마다 입금 안내가 따로 나와요. 각 주문 금액을 입금하고 입금 확인을 요청해주세요.' : '주문 접수가 마감되었어요. 주문 상태는 여기서 확인할 수 있어요.';
   }
@@ -277,9 +281,9 @@ async function orderDetail(id) {
   const editable = ordersOpen() && order.status === 'payment_pending';
   const needsDate = !order.pickupDate && EVENTS[order.event]?.available !== false && ordersOpen() && ['payment_pending','verification_requested'].includes(order.status);
   const cancellable = !['cancelled','cancel_requested','refunded','picked_up'].includes(order.status);
-  const note = {payment_pending:'입금 후 \'입금 확인 요청\'을 눌러주세요. 요청만으로 주문이 확정되지는 않아요.',verification_requested:'운영자가 입금 내역을 확인하고 있어요. 확인되면 \'입금 확인 완료\'로 바뀌어요.',paid:'입금이 확인됐어요. 선택한 행사에서 수령해주세요.',cancel_requested:'운영자가 취소와 환불 여부를 확인하고 있어요.',cancelled:'취소된 주문이에요.',refunded:'환불이 완료된 주문이에요.',picked_up:'수령이 완료된 주문이에요.'}[order.status] ?? '';
+  const note = {payment_pending:'입금 후 \'입금 확인 요청\'을 눌러주세요. 요청만으로 주문이 확정되지는 않아요.',verification_requested:'운영자가 입금 내역을 확인하고 있어요. 확인되면 \'입금 확인 완료\'로 바뀌어요.',paid:'입금이 확인됐어요. 현장 배부 일정과 장소는 오픈카톡방에서 공지해요.',cancel_requested:'운영자가 취소와 환불 여부를 확인하고 있어요.',cancelled:'취소된 주문이에요.',refunded:'환불이 완료된 주문이에요.',picked_up:'수령이 완료된 주문이에요.'}[order.status] ?? '';
   const id_ = escapeHTML(order.id);
-  openModal(`<div class="modal-label">내 주문</div><h2 id="modal-title">주문 내역</h2>${orderProgress(order)}${responseRows(order)}<p>${note}</p><div class="modal-actions">${needsDate ? `<button class="button primary" data-action="pickup-date" data-id="${id_}">수령일 추가</button>` : ''}${editable ? `<button class="button primary" data-action="edit" data-id="${id_}">주문서 수정</button>` : ''}${!closed ? `<button class="button secondary" data-action="order" data-id="${id_}">입금 안내</button>` : ''}<button class="button secondary" data-action="my">주문 목록</button></div>${cancellable ? `<button class="danger-action" data-action="cancel-confirm" data-id="${id_}">${order.status === 'payment_pending' && ordersOpen() ? '주문 취소' : '취소·환불 요청'}</button>` : ''}`);
+  openModal(`<div class="modal-label">내 주문</div><h2 id="modal-title">주문 내역</h2>${orderProgress(order)}${responseRows(order)}<p>${note}</p>${isPaid(order) ? openChatLink() : ''}<div class="modal-actions">${needsDate ? `<button class="button primary" data-action="pickup-date" data-id="${id_}">수령일 추가</button>` : ''}${editable ? `<button class="button primary" data-action="edit" data-id="${id_}">주문서 수정</button>` : ''}${!closed ? `<button class="button secondary" data-action="order" data-id="${id_}">입금 안내</button>` : ''}<button class="button secondary" data-action="my">주문 목록</button></div>${cancellable ? `<button class="danger-action" data-action="cancel-confirm" data-id="${id_}">${order.status === 'payment_pending' && ordersOpen() ? '주문 취소' : '취소·환불 요청'}</button>` : ''}`);
 }
 /** 입금 안내 버튼 문구. 요청 뒤에는 누를 수 없고 진행 상태를 보여준다. */
 const PAYMENT_BUTTON = {payment_pending:'입금했어요 · 입금 확인 요청',verification_requested:'입금 확인 중…',paid:'입금 확인 완료',cancel_requested:'취소 확인 중…',picked_up:'수령 완료'};
@@ -291,12 +295,12 @@ function paymentGuide(id) {
   const guide = {
     payment_pending: paymentWindowOpen() ? `입금자명 <strong>${escapeHTML(record.payerName)}</strong>(으)로 ${won(record.totalAmount)}을 보내주세요. 입금한 뒤 아래 버튼을 눌러주세요. 운영자가 입금 내역을 대조한 뒤 주문이 확정돼요.` : '입금 기한이 지났어요. 입금 여부는 운영자가 실제 입금 내역으로 확인해요.',
     verification_requested: `입금 확인을 요청했어요. 운영자가 입금자명 <strong>${escapeHTML(record.payerName)}</strong>, ${won(record.totalAmount)} 입금 내역을 대조하고 있어요. 확인되면 '입금 확인 완료'로 바뀌어요.`,
-    paid: '입금이 확인됐어요. 선택한 행사에서 수령해주세요.',
+    paid: '입금이 확인됐어요. 현장 배부 일정과 장소는 오픈카톡방에서 공지해요.',
     cancel_requested: '운영자가 취소와 환불 여부를 확인하고 있어요.',
     picked_up: '수령이 완료된 주문이에요.',
   }[record.status] ?? '';
   const title = {payment_pending:'입금해주세요',verification_requested:'입금 확인 중이에요',paid:'입금이 확인됐어요',cancel_requested:'취소 확인 중이에요',picked_up:'수령이 완료됐어요'}[record.status] ?? '입금 계좌';
-  openModal(`<div class="modal-label">입금 계좌</div><h2 id="modal-title">${title}</h2>${orderProgress(record)}${responseRows(record)}<div class="payment-details"><p class="payment-bank-name"><strong>${escapeHTML(GROUP_BUY.bankAccount.bank)}</strong><span>예금주 ${escapeHTML(GROUP_BUY.bankAccount.holder)}</span></p><p class="payment-account-number">${escapeHTML(GROUP_BUY.bankAccount.number)}</p><div class="payment-copy-buttons"><button class="text-button" data-action="copy-account" data-id="${id_}">계좌번호 복사</button><button class="text-button" data-action="copy-amount" data-id="${id_}">입금 금액 복사</button></div><p class="payment-deadline">입금 기한: ${GROUP_BUY.paymentDeadlineLabel}<br>주문 마감: ${GROUP_BUY.ordersCloseLabel}</p></div><p>${guide}</p><button class="button primary" data-action="payment-request" data-id="${id_}" ${pending ? '' : 'disabled'}>${PAYMENT_BUTTON[record.status] ?? ORDER_STATUS[record.status]}</button><button class="button secondary" data-action="order-detail" data-id="${id_}">주문 내역</button>`);
+  openModal(`<div class="modal-label">입금 계좌</div><h2 id="modal-title">${title}</h2>${orderProgress(record)}${responseRows(record)}<div class="payment-details"><p class="payment-bank-name"><strong>${escapeHTML(GROUP_BUY.bankAccount.bank)}</strong><span>예금주 ${escapeHTML(GROUP_BUY.bankAccount.holder)}</span></p><p class="payment-account-number">${escapeHTML(GROUP_BUY.bankAccount.number)}</p><div class="payment-copy-buttons"><button class="text-button" data-action="copy-account" data-id="${id_}">계좌번호 복사</button><button class="text-button" data-action="copy-amount" data-id="${id_}">입금 금액 복사</button></div><p class="payment-deadline">입금 기한: ${GROUP_BUY.paymentDeadlineLabel}<br>주문 마감: ${GROUP_BUY.ordersCloseLabel}</p></div><p>${guide}</p>${isPaid(record) ? openChatLink() : ''}<button class="button primary" data-action="payment-request" data-id="${id_}" ${pending ? '' : 'disabled'}>${PAYMENT_BUTTON[record.status] ?? ORDER_STATUS[record.status]}</button><button class="button secondary" data-action="order-detail" data-id="${id_}">주문 내역</button>`);
 }
 function addPickupDate(id) {
   const record = findOrder(id);

@@ -359,3 +359,15 @@ dialog::backdrop{background:#000b}
 .loading-block{display:flex;align-items:center;justify-content:center;gap:10px;padding:40px 0;font-size:12px;color:#b5c0a6}
 .loading-block .spinner{width:20px;height:20px;color:var(--lime)}
 .account-loading{display:inline-flex;align-items:center;color:var(--lime);font-size:18px;padding:0 6px}
+
+/* 오픈카톡방(현장 배부 공지) */
+.hero-actions{display:flex;gap:10px;align-items:stretch}
+.hero-actions .hero-cta{margin-top:0}
+.openchat-button{gap:8px;padding:0 18px;white-space:nowrap}
+.openchat-button svg,.openchat-notice svg,.modal-shell .openchat-link svg{width:18px;height:18px;fill:#fee500;flex-shrink:0}
+.openchat-notice{display:flex;align-items:center;gap:12px;margin:0 0 12px;padding:13px 14px;border:1px solid #6b6a2a;background:#2a2a14;border-radius:6px;color:var(--ink);text-decoration:none}
+.openchat-notice span{flex:1;font-size:11px;color:#d9d6a8;line-height:1.5}
+.openchat-notice strong{display:block;font-size:12px;color:var(--ink)}
+.openchat-notice em{font-style:normal;font-size:11px;color:var(--lime);white-space:nowrap}
+.modal-shell .openchat-link{gap:8px}
+@media(max-width:700px){.hero-actions{margin-top:17px}.hero-actions .hero-cta{flex:1;width:auto}.openchat-button{padding:0 14px;font-size:12px;min-height:45px}}

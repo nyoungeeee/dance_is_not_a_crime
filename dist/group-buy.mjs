@@ -9,6 +9,8 @@ export const GROUP_BUY = Object.freeze({
   bankAccount: Object.freeze({bank: '토스뱅크', number: '1002-8046-9572', holder: '조현영'}),
   paymentDeadline: '2026-10-13T23:59:59.999+09:00',
   paymentDeadlineLabel: '10/13(화) 23:59',
+  // 현장 배부 공지. index.html의 링크와 같은 주소
+  openChatUrl: 'https://open.kakao.com/o/g384C4Ri',
 });
 export function ordersOpen(now = new Date()) {
   const time = new Date(now).getTime();

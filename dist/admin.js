@@ -1,6 +1,6 @@
 import {api} from './api.mjs?v=2';
-import {EVENTS, pickupDateLabel} from './account-state.mjs?v=13';
-import {ORDER_STATUS} from './group-buy.mjs?v=13';
+import {EVENTS, pickupDateLabel} from './account-state.mjs?v=14';
+import {ORDER_STATUS} from './group-buy.mjs?v=14';
 // 운영자 화면. 권한은 서버가 검사한다(ADMIN_KAKAO_IDS). 이 파일은 공개돼도 데이터는 운영자에게만 내려온다.
 const $ = s => document.querySelector(s);
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));

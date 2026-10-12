@@ -9,7 +9,7 @@
   <meta property="og:image" content="https://dance-is-not-a-crime.b201.kr/assets/slogan.png">
   <title>춤은 불법이 아니다 | 슬로건 공동구매</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%23161616'/%3E%3Ctext x='32' y='48' text-anchor='middle' font-size='49' fill='%23d7fa61'%3E✳︎%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/styles.css?v=33"><script type="module" src="/app.js?v=30"></script><script type="module" src="/music.js?v=26"></script>
+  <link rel="stylesheet" href="/styles.css?v=34"><script type="module" src="/app.js?v=31"></script><script type="module" src="/music.js?v=26"></script>
 </head>
 <body>
   <div class="header-region">
@@ -43,7 +43,7 @@
           <div class="countdown-clock" id="countdown-clock" role="timer" aria-live="off" aria-atomic="true"><div><strong id="countdown-days">00</strong><span>일</span></div><div><strong id="countdown-hours">00</strong><span>시간</span></div><div><strong id="countdown-minutes">00</strong><span>분</span></div><div><strong id="countdown-seconds">00</strong><span>초</span></div></div>
           <p id="countdown-closed" class="countdown-closed" role="status" hidden>주문 접수가 마감되었습니다.</p>
         </section>
-        <a href="#participate" class="button lime hero-cta">주문서 작성하기 <span aria-hidden="true">↗</span></a>
+        <div class="hero-actions"><a href="#participate" class="button lime hero-cta">주문서 작성하기 <span aria-hidden="true">↗</span></a><a href="https://open.kakao.com/o/g384C4Ri" class="button secondary openchat-button" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3C6.5 3 2 6.4 2 10.6c0 2.7 1.8 5 4.5 6.4l-.9 3.5 4-2.4c.8.1 1.6.2 2.4.2 5.5 0 10-3.5 10-7.7S17.5 3 12 3Z"/></svg>오픈카톡방</a></div>
         <p class="hero-note">입금 기한 10/13(화) 23:59까지</p>
       </div>
       <div class="product-preview" id="design">
@@ -72,6 +72,7 @@
         <div class="loading-block" id="panel-loading" role="status"><span class="spinner" aria-hidden="true"></span>주문 정보를 불러오는 중이에요</div>
         <div id="order-list-panel" class="order-list-panel" hidden>
           <div class="form-heading"><h3>접수된 주문</h3><p id="order-list-status"></p></div>
+          <a class="openchat-notice" id="openchat-notice" href="https://open.kakao.com/o/g384C4Ri" target="_blank" rel="noopener" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3C6.5 3 2 6.4 2 10.6c0 2.7 1.8 5 4.5 6.4l-.9 3.5 4-2.4c.8.1 1.6.2 2.4.2 5.5 0 10-3.5 10-7.7S17.5 3 12 3Z"/></svg><span><strong>입금이 확인됐어요</strong>현장 배부 일정·장소는 오픈카톡방에서 공지해요</span><em>바로가기 ↗</em></a>
           <ul class="order-cards" id="order-cards"></ul>
           <button type="button" class="button primary add-order" id="add-order" data-action="new-order"><span aria-hidden="true">+</span> 추가로 주문하기</button>
           <p class="auth-note" id="order-list-note">주문마다 입금 안내가 따로 나와요. 각 주문 금액을 입금하고 입금 확인을 요청해주세요.</p>
