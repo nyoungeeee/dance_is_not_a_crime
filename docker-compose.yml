@@ -1,0 +1,11 @@
+# B201·한입팟과 분리된 별도 Compose 프로젝트. 포트가 겹치지 않는지 배포 전 확인.
+name: dance
+
+services:
+  web:
+    build: .
+    image: dance:latest
+    restart: unless-stopped
+    # Cloudflare Tunnel이 이 포트로 넘긴다. 외부에 직접 노출하지 않는다.
+    ports:
+      - "127.0.0.1:${HOST_PORT:-3220}:80"
