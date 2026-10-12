@@ -73,7 +73,7 @@ http://localhost:3000 을 엽니다. `AUTH_MOCK=1`이면 카카오 대신 모의
 ```bash
 cd ~/dance
 cp .env.example .env      # PUBLIC_URL, SESSION_SECRET(openssl rand -hex 32), 카카오 키, ADMIN_KAKAO_IDS
-mkdir -p backups && sudo chown 1000:1000 backups   # 컨테이너는 node(uid 1000)로 실행
+mkdir -p backups && docker run --rm -v "$PWD/backups":/b alpine chown 1000:1000 /b   # 컨테이너는 node(uid 1000), b201 계정은 uid 1001
 docker compose up -d --build
 curl -fsS http://127.0.0.1:3220/api/health
 ```
