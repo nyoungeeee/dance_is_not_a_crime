@@ -1,5 +1,5 @@
 # CI: PR과 main 푸시마다 서버 테스트(모의 로그인으로 주문·문의·운영자 흐름)와 Docker 이미지 확인.
-# CD: main에 푸시되고 CI가 통과하면 Cloudflare Tunnel SSH로 서버에 들어가 scripts/deploy.sh를 실행한다.
+# CD: main에 푸시되고 CI가 통과하면 서버(b201)에 SSH로 들어가 scripts/deploy.sh를 실행한다.
 #     배포 키는 서버 authorized_keys에서 deploy.sh만 실행하도록 묶여 있다(README 배포 절 참고).
 #     저장소 변수 DEPLOY_ENABLED=true를 넣기 전까지 deploy 잡은 건너뛴다.
 name: CI/CD
@@ -51,29 +51,22 @@ jobs:
     environment: production
     concurrency: { group: deploy-production, cancel-in-progress: false }
     env:
-      SSH_HOST: hanip-ssh.b201.kr
+      SSH_HOST: 141.164.62.18
       SSH_USER: b201
       PUBLIC_URL: https://dance-is-not-a-crime.b201.kr
     steps:
-      - name: cloudflared 설치
-        run: |
-          curl -fsSL -o /tmp/cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
-          sudo dpkg -i /tmp/cloudflared.deb
       - name: SSH 설정
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: |
           install -m 700 -d ~/.ssh
           printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
-          # 서버 호스트 키 고정(한입팟과 같은 b201 서버)
+          # 서버 호스트 키 고정(b201, ed25519). 다른 서버로 바뀌면 접속을 거부한다.
           echo "$SSH_HOST ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBLQLv0V3bKUnYaDgZDXXQ1qLE1NysLozBJTKexrY98t" > ~/.ssh/known_hosts
       - name: 배포
-        env:
-          CF_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
-          CF_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
-        run: |
-          ssh -i ~/.ssh/deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ServerAliveInterval=20 \
-            -o ProxyCommand="cloudflared access ssh --hostname %h --service-token-id $CF_ID --service-token-secret $CF_SECRET" \
-            "$SSH_USER@$SSH_HOST" deploy
+        # 배포 키는 서버 authorized_keys에서 command="…/deploy.sh"로 묶여 있어 deploy.sh만 실행된다.
+        run: ssh -i ~/.ssh/deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ServerAliveInterval=20 "$SSH_USER@$SSH_HOST" deploy
       - name: 외부 확인
-        run: curl -fsS "$PUBLIC_URL/api/health"
+        run: |
+          for _ in $(seq 1 10); do curl -fsS "$PUBLIC_URL/api/health" && exit 0; sleep 3; done
+          exit 1
