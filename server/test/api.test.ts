@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 
 // 임시 DB에 마이그레이션을 적용한 뒤 모의 로그인 모드로 앱을 띄운다.
@@ -78,11 +79,13 @@ class Client {
 }
 
 const ORDER = { quantity: 3, event: 'inmufe', pickupDate: '2026-10-17', payerName: '홍길동' };
+const key = () => crypto.randomUUID();
 
 test('비로그인: 계정 없음, 주문·문의 401, 헤더 없는 쓰기 요청 403', async () => {
   const c = new Client();
-  assert.deepEqual((await c.json('GET', '/api/me')).body, { user: null, order: null, unread: 0 });
-  assert.equal((await c.json('PUT', '/api/orders/mine', ORDER)).status, 401);
+  assert.deepEqual((await c.json('GET', '/api/me')).body, { user: null, orders: [], unread: 0 });
+  assert.equal((await c.json('POST', '/api/orders', ORDER)).status, 401);
+  assert.equal((await c.json('GET', '/api/orders')).status, 401);
   assert.equal((await c.json('GET', '/api/messages')).status, 401);
   const res = await c.raw('POST', '/api/auth/logout', undefined, {});
   assert.equal(res.status, 403);
@@ -102,14 +105,14 @@ test('로그인 의도(intent)는 허용된 값만, 동의 취소는 cancelled�
   assert.equal(new URL(res.headers.get('location')!, BASE).searchParams.get('login'), 'error');
 });
 
-test('주문 전체 흐름: 닉네임 → 제출 → 수정 → 입금 확인 요청 → 잠금 → 취소 요청 → 탈퇴 차단', async () => {
+test('여러 건 주문: 제출·중복 제출 방지·수정·입금 확인 요청·잠금·취소·탈퇴 차단', async () => {
   const c = new Client();
   const back = await c.login('1001', 'order');
   assert.equal(back.searchParams.get('login'), 'new');
   assert.equal(back.searchParams.get('intent'), 'order');
 
   // 닉네임 없이 주문 불가
-  assert.equal((await c.json('PUT', '/api/orders/mine', ORDER)).status, 403);
+  assert.equal((await c.json('POST', '/api/orders', ORDER)).status, 403);
   assert.equal((await c.json('PATCH', '/api/me', { nickname: 'a' })).status, 400);
   assert.equal((await c.json('PATCH', '/api/me', { nickname: '운영자' })).status, 400);
   assert.equal((await c.json('PATCH', '/api/me', { nickname: '춤추는 해골' })).body.user.nickname, '춤추는 해골');
@@ -126,44 +129,79 @@ test('주문 전체 흐름: 닉네임 → 제출 → 수정 → 입금 확인 �
     { ...ORDER, payerName: 'x'.repeat(41) },
     { ...ORDER, payerName: '<b>' },
   ]) {
-    assert.equal((await c.json('PUT', '/api/orders/mine', bad)).status, 400, JSON.stringify(bad));
+    assert.equal((await c.json('POST', '/api/orders', bad)).status, 400, JSON.stringify(bad));
   }
 
   // 클라이언트가 보낸 가격·상태는 무시된다
-  let r = await c.json('PUT', '/api/orders/mine', { ...ORDER, unitPrice: 1, totalAmount: 1, status: 'paid' });
-  assert.equal(r.status, 200);
+  const k1 = key();
+  let r = await c.json('POST', '/api/orders', { ...ORDER, requestKey: k1, unitPrice: 1, totalAmount: 1, status: 'paid' });
+  assert.equal(r.status, 201);
   assert.equal(r.body.created, true);
-  const id = r.body.order.id;
-  assert.match(id, /^DNC-[0-9A-F]{8}$/);
-  assert.equal(r.body.order.totalAmount, 15000);
-  assert.equal(r.body.order.status, 'payment_pending');
+  const first = r.body.order;
+  assert.match(first.id, /^DNC-[0-9A-F]{8}$/);
+  assert.equal(first.totalAmount, 15000);
+  assert.equal(first.status, 'payment_pending');
 
-  // 다시 제출하면 같은 주문을 수정(중복 주문 없음)
-  r = await c.json('PUT', '/api/orders/mine', { ...ORDER, quantity: 5, pickupDate: '2026-10-18' });
+  // 같은 주문서를 두 번 제출(연타·재전송)해도 주문은 하나
+  r = await c.json('POST', '/api/orders', { ...ORDER, requestKey: k1 });
   assert.equal(r.body.created, false);
-  assert.equal(r.body.order.id, id);
-  assert.equal(r.body.order.totalAmount, 25000);
+  assert.equal(r.body.order.id, first.id);
 
-  r = await c.json('POST', '/api/orders/mine/payment-request');
+  // 추가 주문
+  r = await c.json('POST', '/api/orders', { ...ORDER, quantity: 1, pickupDate: '2026-10-18', requestKey: key() });
+  assert.equal(r.body.created, true);
+  const second = r.body.order;
+  assert.notEqual(second.id, first.id);
+  let mine = (await c.json('GET', '/api/orders')).body.orders;
+  assert.deepEqual(mine.map((o: any) => o.id), [second.id, first.id]);
+
+  // 주문별 수정
+  r = await c.json('PUT', `/api/orders/${first.id}`, { ...ORDER, quantity: 5 });
+  assert.equal(r.body.order.totalAmount, 25000);
+  assert.equal((await c.json('GET', '/api/orders')).body.orders.find((o: any) => o.id === second.id).quantity, 1);
+
+  r = await c.json('POST', `/api/orders/${first.id}/payment-request`);
   assert.equal(r.body.order.status, 'verification_requested');
-  assert.equal((await c.json('POST', '/api/orders/mine/payment-request')).status, 409);
+  assert.equal((await c.json('POST', `/api/orders/${first.id}/payment-request`)).status, 409);
   // 입금 확인 요청 후에는 수정 불가, 수령일 변경은 가능
-  assert.equal((await c.json('PUT', '/api/orders/mine', ORDER)).status, 409);
-  r = await c.json('PATCH', '/api/orders/mine/pickup-date', { pickupDate: '2026-10-17' });
-  assert.equal(r.body.order.pickupDate, '2026-10-17');
+  assert.equal((await c.json('PUT', `/api/orders/${first.id}`, ORDER)).status, 409);
+  r = await c.json('PATCH', `/api/orders/${first.id}/pickup-date`, { pickupDate: '2026-10-18' });
+  assert.equal(r.body.order.pickupDate, '2026-10-18');
+
+  // 다른 사람은 내 주문을 볼 수도 바꿀 수도 없다
+  const other = new Client();
+  await other.login('1999');
+  await other.json('PATCH', '/api/me', { nickname: '남의주문' });
+  assert.deepEqual((await other.json('GET', '/api/orders')).body.orders, []);
+  assert.equal((await other.json('PUT', `/api/orders/${second.id}`, ORDER)).status, 404);
+  assert.equal((await other.json('POST', `/api/orders/${second.id}/cancel`)).status, 404);
+  assert.equal((await other.json('POST', `/api/orders/${second.id}/payment-request`)).status, 404);
+  // 남이 쓴 requestKey를 재사용해도 그 주문을 받지 못한다
+  assert.equal((await other.json('POST', '/api/orders', { ...ORDER, requestKey: k1 })).status, 409);
 
   // 진행 중 주문이 있으면 탈퇴 불가
   assert.equal((await c.json('DELETE', '/api/me')).status, 409);
 
-  // 입금 확인 요청 이후 취소는 운영자 확인이 필요한 취소 요청
-  r = await c.json('POST', '/api/orders/mine/cancel');
-  assert.equal(r.body.order.status, 'cancel_requested');
-  assert.equal((await c.json('POST', '/api/orders/mine/cancel')).status, 409);
+  // 입금 대기 주문은 바로 취소, 입금 확인 요청 이후는 취소 요청
+  assert.equal((await c.json('POST', `/api/orders/${second.id}/cancel`)).body.order.status, 'cancelled');
+  assert.equal((await c.json('POST', `/api/orders/${first.id}/cancel`)).body.order.status, 'cancel_requested');
+  assert.equal((await c.json('POST', `/api/orders/${first.id}/cancel`)).status, 409);
 
   const me = (await c.json('GET', '/api/me')).body;
   assert.equal(me.user.nickname, '춤추는 해골');
   assert.equal(me.user.isAdmin, false);
-  assert.equal(me.order.id, id);
+  assert.deepEqual(me.orders.map((o: any) => o.status), ['cancelled', 'cancel_requested']);
+});
+
+test('진행 중 주문은 10건까지, 끝난 주문은 세지 않는다', async () => {
+  const c = new Client();
+  await c.login('1500');
+  await c.json('PATCH', '/api/me', { nickname: '많이사는사람' });
+  const ids: string[] = [];
+  for (let i = 0; i < 10; i++) ids.push((await c.json('POST', '/api/orders', { ...ORDER, quantity: 1, requestKey: key() })).body.order.id);
+  assert.equal((await c.json('POST', '/api/orders', { ...ORDER, requestKey: key() })).status, 409);
+  await c.json('POST', `/api/orders/${ids[0]}/cancel`);
+  assert.equal((await c.json('POST', '/api/orders', { ...ORDER, requestKey: key() })).status, 201);
 });
 
 test('마감 후에는 제출·수정·즉시 취소가 막힌다(서버 시각 기준)', async () => {
@@ -172,13 +210,13 @@ test('마감 후에는 제출·수정·즉시 취소가 막힌다(서버 시각 
   const c = new Client();
   await c.login('1002');
   await c.json('PATCH', '/api/me', { nickname: '마감테스트' });
-  const created = (await c.json('PUT', '/api/orders/mine', ORDER)).body.order;
+  const created = (await c.json('POST', '/api/orders', ORDER)).body.order;
   const userId = (await c.json('GET', '/api/me')).body.user.id;
   const late = new Date('2026-10-13T22:00:00+09:00');
-  await assert.rejects(orders.submit(userId, '마감테스트', ORDER, late), /마감/);
-  await assert.rejects(orders.setPickupDate(userId, '2026-10-18', late));
-  const cancelled = await orders.cancel(userId, late);
-  assert.equal(cancelled.id, created.id);
+  await assert.rejects(orders.create(userId, '마감테스트', ORDER, late), /마감/);
+  await assert.rejects(orders.update(userId, '마감테스트', created.id, ORDER, late), /마감/);
+  await assert.rejects(orders.setPickupDate(userId, created.id, '2026-10-18', late));
+  const cancelled = await orders.cancel(userId, created.id, late);
   assert.equal(cancelled.status, 'cancel_requested');
 });
 
@@ -216,28 +254,22 @@ test('문의: 500자 제한, 운영자 권한, 읽음·새 답변 표시', async
   assert.equal((await user.json('GET', '/api/me')).body.unread, 0);
 });
 
-test('운영자 상태 변경: 기록이 남고, 취소 후 새 주문 가능, 되돌릴 때 중복 주문 방지', async () => {
+test('운영자 상태 변경: 기록이 남고, 입금 확정 후 사용자는 수정 불가', async () => {
   const user = new Client();
   await user.login('3001');
   await user.json('PATCH', '/api/me', { nickname: '재주문' });
-  const first = (await user.json('PUT', '/api/orders/mine', ORDER)).body.order;
+  const first = (await user.json('POST', '/api/orders', ORDER)).body.order;
 
   const admin = new Client();
   await admin.login('9999');
   assert.equal((await admin.json('POST', `/api/admin/orders/${first.id}/status`, { status: 'nope' })).status, 400);
   let r = await admin.json('POST', `/api/admin/orders/${first.id}/status`, { status: 'paid', note: '15,000원 입금 확인' });
   assert.equal(r.body.order.status, 'paid');
-  assert.equal((await user.json('GET', '/api/me')).body.order.status, 'paid');
-  // 입금 확정 후 사용자는 수정 불가
-  assert.equal((await user.json('PUT', '/api/orders/mine', ORDER)).status, 409);
+  assert.equal((await user.json('GET', '/api/me')).body.orders[0].status, 'paid');
+  assert.equal((await user.json('PUT', `/api/orders/${first.id}`, ORDER)).status, 409);
 
   r = await admin.json('POST', `/api/admin/orders/${first.id}/status`, { status: 'refunded', note: '환불 완료' });
   assert.equal(r.body.order.status, 'refunded');
-  const second = (await user.json('PUT', '/api/orders/mine', { ...ORDER, quantity: 1 })).body;
-  assert.equal(second.created, true);
-  assert.notEqual(second.order.id, first.id);
-  // 진행 중 주문이 있는데 환불 주문을 되살리면 중복이 되므로 막는다
-  assert.equal((await admin.json('POST', `/api/admin/orders/${first.id}/status`, { status: 'paid' })).status, 409);
 
   const all = (await admin.json('GET', '/api/admin/orders')).body.orders;
   const logged = all.find((o: any) => o.id === first.id);
@@ -250,8 +282,8 @@ test('탈퇴: 세션 무효, 대화 삭제, 주문 기록은 비식별로 남고
   await c.login('4001');
   await c.json('PATCH', '/api/me', { nickname: '떠나는사람' });
   await c.json('POST', '/api/messages', { text: '안녕하세요' });
-  await c.json('PUT', '/api/orders/mine', ORDER);
-  assert.equal((await c.json('POST', '/api/orders/mine/cancel')).body.order.status, 'cancelled');
+  const o = (await c.json('POST', '/api/orders', ORDER)).body.order;
+  assert.equal((await c.json('POST', `/api/orders/${o.id}/cancel`)).body.order.status, 'cancelled');
   const oldId = (await c.json('GET', '/api/me')).body.user.id;
   const sid = c.cookies.get('dnc_sid')!;
 

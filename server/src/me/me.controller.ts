@@ -5,7 +5,7 @@ import { KakaoClient } from '../auth/kakao.client';
 import { SessionService, SessionUser } from '../auth/session.service';
 import { UsersService } from '../auth/users.service';
 import { MessagesService } from '../messages/messages.service';
-import { OrdersService, orderDto } from '../orders/orders.service';
+import { OrdersService } from '../orders/orders.service';
 import { PrismaService } from '../prisma.service';
 
 @Controller('me')
@@ -19,13 +19,13 @@ export class MeController {
     private readonly prisma: PrismaService,
   ) {}
 
-  /** 비로그인도 200으로 user:null. 화면 첫 로딩에 필요한 계정·주문·새 답변 수를 한 번에 준다. */
+  /** 비로그인도 200으로 user:null. 화면 첫 로딩에 필요한 계정·내 주문 전체·새 답변 수를 한 번에 준다. */
   @Get()
   async me(@Req() req: Request) {
     const user = await this.sessions.resolve(req);
-    if (!user) return { user: null, order: null, unread: 0 };
-    const [order, unread] = await Promise.all([this.orders.current(user.id), this.messages.unreadForUser(user.id)]);
-    return { user, order: order ? orderDto(order) : null, unread };
+    if (!user) return { user: null, orders: [], unread: 0 };
+    const [orders, unread] = await Promise.all([this.orders.mine(user.id), this.messages.unreadForUser(user.id)]);
+    return { user, orders, unread };
   }
 
   /** 운영자 등록(ADMIN_KAKAO_IDS)에 넣을 본인 카카오 회원번호 확인용. */

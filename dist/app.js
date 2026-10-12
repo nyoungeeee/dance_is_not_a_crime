@@ -4,16 +4,24 @@ import {GROUP_BUY, ordersOpen, ORDER_STATUS, paymentWindowOpen, parseQuantity, o
 import {api} from './api.mjs?v=1';
 const $ = selector => document.querySelector(selector);
 const modal = $('#modal'), content = $('#modal-content'), form = $('#order-form');
-// 계정·주문·새 답변 수는 서버(/api/me)가 기준. 화면은 받은 값을 보여주기만 한다.
-let me = {user:null, order:null, unread:0};
+// 계정·내 주문(최신순)·새 답변 수는 서버(/api/me)가 기준. 화면은 받은 값을 보여주기만 한다.
+let me = {user:null, orders:[], unread:0};
 let quantity = 1, toastTimer, loginIntent = 'login', messagePoll;
+// 주문서 자리: 'list'(접수된 주문) | 'new'(새 주문서) | 'edit'(editingId 주문 수정)
+let panelMode = 'list', editingId = null;
+// 새 주문서마다 하나. 같은 주문서를 두 번 제출해도 서버가 주문을 하나만 만든다.
+let requestKey = crypto.randomUUID();
 const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const signedIn = () => !!me.user?.nickname;
 const nickname = () => me.user?.nickname ?? null;
-const activeOrder = () => me.order && !['cancelled','refunded'].includes(me.order.status) ? me.order : null;
+const CLOSED = ['cancelled','refunded','picked_up'];
+const findOrder = id => me.orders.find(order => order.id === id) ?? null;
+const openOrders = () => me.orders.filter(order => !CLOSED.includes(order.status));
+const won = amount => `${amount.toLocaleString('ko-KR')}원`;
 async function loadMe() {
   try {me = await api('GET','/api/me');}
   catch(error) {toast(error.message);}
+  if(editingId && findOrder(editingId)?.status !== 'payment_pending') {editingId = null;panelMode = 'list';}
   refresh();
   return me;
 }
@@ -24,6 +32,10 @@ async function busy(button, task) {
   try {return await task();}
   finally {if(button?.isConnected) button.disabled = false;}
 }
+function replaceOrder(order) {
+  const index = me.orders.findIndex(o => o.id === order.id);
+  if(index === -1) me.orders.unshift(order);else me.orders[index] = order;
+}
 function refreshQuantity() {
   const input = $('#quantity');
   if (document.activeElement !== input && quantity !== null) input.value = String(quantity);
@@ -31,7 +43,11 @@ function refreshQuantity() {
   $('#minus').disabled = quantity !== null && quantity <= GROUP_BUY.minQuantity;
   $('#plus').disabled = quantity !== null && quantity >= GROUP_BUY.maxQuantity;
   const amount = orderAmount(quantity);
-  $('#order-total').textContent = amount === null ? '수량을 입력해주세요' : `${amount.toLocaleString('ko-KR')}원`;
+  $('#order-total').textContent = amount === null ? '수량을 입력해주세요' : won(amount);
+}
+function orderCard(order) {
+  const pending = order.status === 'payment_pending';
+  return `<li class="order-card ${CLOSED.includes(order.status) && order.status !== 'picked_up' ? 'is-closed' : ''}"><div class="order-card-top"><strong>${escapeHTML(order.id)}</strong><span class="order-badge s-${order.status}">${ORDER_STATUS[order.status] ?? ''}</span></div><p>슬로건 ${order.quantity}개 · ${won(order.totalAmount)}</p><p class="order-card-sub">${EVENTS[order.event]?.name ?? ''} ${pickupDateLabel(order.event,order.pickupDate)} · 입금자명 ${escapeHTML(order.payerName)}</p><div class="order-card-actions"><button type="button" class="text-button" data-action="order-detail" data-id="${escapeHTML(order.id)}">자세히</button>${pending ? `<button type="button" class="text-button" data-action="order" data-id="${escapeHTML(order.id)}">입금 안내</button>` : ''}</div></li>`;
 }
 function refresh() {
   const on = signedIn();
@@ -40,16 +56,29 @@ function refresh() {
   $('#header-nickname').textContent = on ? nickname() : '';
   $('#menu-nickname').textContent = on ? nickname() : '';
   $('#admin-menu-item').hidden = !(on && me.user.isAdmin);
-  $('#profile-status').textContent = on ? `${nickname()} 님의 주문 정보예요.` : '카카오 로그인 후 닉네임을 설정해주세요.';
-  const active = activeOrder();
-  const editable = ordersOpen() && (!active || active.status === 'payment_pending');
-  $('#submit-label').textContent = on ? (editable ? (active ? '주문서 수정' : '주문서 제출') : active ? '내 주문 확인' : '주문 접수 마감') : ordersOpen() ? '카카오 로그인하고 주문서 작성' : '주문 접수 마감';
-  $('#submit-order').disabled = !ordersOpen() && !(on && active);
+  const open = ordersOpen();
+  const hasOrders = on && me.orders.length > 0;
+  if(!hasOrders) {panelMode = 'new';editingId = null;}
+  else if(panelMode === 'new' && !open) panelMode = 'list';
+  const showList = hasOrders && panelMode === 'list';
+  $('#order-list-panel').hidden = !showList;
+  form.hidden = showList;
+  if(showList) {
+    const pending = openOrders().filter(order => order.status === 'payment_pending');
+    $('#order-list-status').textContent = pending.length ? `입금 대기 ${pending.length}건 · ${won(pending.reduce((sum, order) => sum + order.totalAmount, 0))}` : `${nickname()} 님의 주문 ${me.orders.length}건`;
+    $('#order-cards').innerHTML = me.orders.map(orderCard).join('');
+    $('#add-order').hidden = !open;
+    $('#order-list-note').textContent = open ? '주문마다 입금 안내가 따로 나와요. 각 주문 금액을 입금하고 입금 확인을 요청해주세요.' : '주문 접수가 마감되었어요. 주문 상태는 여기서 확인할 수 있어요.';
+  }
+  const editing = panelMode === 'edit' ? findOrder(editingId) : null;
+  $('#back-to-list').hidden = !hasOrders;
+  $('#form-title').textContent = editing ? '주문서 수정' : hasOrders ? '추가 주문서' : '주문서 작성';
+  $('#profile-status').textContent = !on ? '카카오 로그인 후 닉네임을 설정해주세요.' : editing ? `주문번호 ${editing.id}의 내용을 바꿔요.` : `${nickname()} 님의 주문서예요.`;
+  $('#submit-label').textContent = !open ? '주문 접수 마감' : !on ? '카카오 로그인하고 주문서 작성' : editing ? '수정 내용 저장' : '주문서 제출';
+  $('#submit-order').disabled = !open;
   $('#submit-order').classList.toggle('kakao', !on);
   $('#submit-order').classList.toggle('primary', on);
-  $('#kakao-icon').hidden = on;
-  $('#saved-notice').hidden = !(on && active);
-  if(active) $('#saved-status').textContent = `${ORDER_STATUS[active.status]} · 주문번호 ${active.id}`;
+  $('#kakao-icon').toggleAttribute('hidden', on); // SVG는 .hidden 속성이 듣지 않는 브라우저가 있다
   refreshQuantity();
   refreshInquiryBadge();
 }
@@ -63,12 +92,12 @@ function renderPickupDays(event, selectedDate = null) {
 }
 form.querySelectorAll('[name="event"]').forEach(input => input.addEventListener('change', () => {if(EVENTS[input.value]?.available !== false) renderPickupDays(input.value);}));
 function setDraft(record) {
-  quantity = record.quantity;
+  quantity = record.quantity ?? 1;
   const selectedEvent = EVENTS[record.event]?.available === false ? null : record.event;
   form.elements.event.value = selectedEvent || '';
   renderPickupDays(selectedEvent,record.pickupDate);
   $('#payer-name').value = record.payerName || '';
-  $('#consent').checked = !!record.payerName;
+  $('#consent').checked = false;
   refreshQuantity();
 }
 function clearDraft() {
@@ -85,6 +114,22 @@ $('#minus').addEventListener('click', () => changeQuantity(-1));
 $('#plus').addEventListener('click', () => changeQuantity(1));
 $('#quantity').addEventListener('input', event => {quantity = parseQuantity(event.currentTarget.value);refresh();});
 $('#quantity').addEventListener('blur', event => {quantity = parseQuantity(event.currentTarget.value);refresh();});
+/** 주문서 자리를 바꾸고 그 위치로 스크롤한다. */
+function showPanel(mode, {orderId = null, focus = true} = {}) {
+  panelMode = mode;editingId = mode === 'edit' ? orderId : null;
+  if(mode === 'new') {
+    clearDraft();requestKey = crypto.randomUUID();
+    // 추가 주문은 보통 같은 사람이 같은 행사에서 받으므로 최근 주문의 행사·입금자명을 미리 채운다.
+    const latest = me.orders[0];
+    if(latest) setDraft({quantity:1, event:latest.event, payerName:latest.payerName});
+  }
+  if(mode === 'edit') setDraft(findOrder(orderId));
+  refresh();
+  if(!focus) return;
+  closeModal();
+  $('#participate').scrollIntoView({behavior:'smooth'});
+  (mode === 'list' ? $('#order-list-panel .form-heading') : $('#quantity')).focus?.({preventScroll:true});
+}
 function toggleMenu(open, {restoreFocus = false} = {}) {
   $('#account-menu').hidden = !open;
   $('#account-button').setAttribute('aria-expanded', String(open));
@@ -111,19 +156,18 @@ function openModal(html, {wide = false} = {}) {
   modal.scrollTop = 0;
   $('.modal-close').focus();
 }
-function closeModal() {modal.close();}
+function closeModal() {if(modal.open) modal.close();}
 modal.addEventListener('close', () => {if(modal.open) return;clearInterval(messagePoll);document.body.style.overflow = '';modal.classList.remove('modal-design','modal-messages');});
 $('.modal-close').addEventListener('click', closeModal);
 // No backdrop dismissal: dragging or selecting text must not close the dialog.
 function toast(message) {$('#toast').textContent = message;$('#toast').classList.add('visible');clearTimeout(toastTimer);toastTimer = setTimeout(() => $('#toast').classList.remove('visible'), 4000);}
-function goToForm() {closeModal();$('#participate').scrollIntoView({behavior:'smooth'});$('#submit-order').focus({preventScroll:true});}
 function loginPrompt(intent = 'login') {
   loginIntent = intent;
   openModal(`<div class="modal-label">로그인</div><h2 id="modal-title">카카오로 로그인</h2><p>로그인 후 사용할 닉네임을 설정해요. 같은 계정으로 주문 내역과 입금 확인 상태를 확인할 수 있어요.</p><p class="auth-note">카카오에서는 회원번호만 받아요. 이름·전화번호·이메일은 받지 않아요.</p><a class="button kakao" href="/api/auth/kakao/login?intent=${encodeURIComponent(intent)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3C6.5 3 2 6.4 2 10.6c0 2.7 1.8 5 4.5 6.4l-.9 3.5 4-2.4c.8.1 1.6.2 2.4.2 5.5 0 10-3.5 10-7.7S17.5 3 12 3Z"/></svg>카카오로 계속하기</a>`);
 }
 function continueIntent(intent) {
-  if(intent === 'order') {closeModal();if(activeOrder()) setDraft(activeOrder());$('#participate').scrollIntoView({behavior:'smooth'});$('#submit-order').focus({preventScroll:true});}
-  else if(intent === 'my') myOrder();
+  if(intent === 'order') showPanel(me.orders.length ? 'list' : 'new');
+  else if(intent === 'my') myOrders();
   else if(intent === 'message') messages();
   else if(intent === 'admin') location.href = '/admin';
 }
@@ -171,16 +215,22 @@ function orderProgress(record) {
   return `<div class="order-progress" aria-label="주문 진행 단계">${PROGRESS_STEPS.map((step, i) => i < done ? `<span class="done">✓ ${step}</span>` : i === done ? `<span class="current" aria-current="step">${step}</span>` : `<span>${step}</span>`).join('')}</div>`;
 }
 function responseRows(record) {
-  return `<div class="modal-detail-table"><div><span>주문번호</span><strong>${escapeHTML(record.id)}</strong></div><div><span>주문 닉네임</span><strong>${escapeHTML(record.nickname)}</strong></div><div><span>주문 수량</span><strong>${record.quantity}개</strong></div><div><span>수령 행사</span><strong>${EVENTS[record.event]?.name ?? ''}</strong></div><div><span>수령일</span><strong>${pickupDateLabel(record.event,record.pickupDate)}</strong></div><div><span>입금자명</span><strong>${escapeHTML(record.payerName)}</strong></div><div><span>상태</span><strong>${ORDER_STATUS[record.status] ?? ''}</strong></div><div><span>입금 금액</span><strong>${record.totalAmount.toLocaleString('ko-KR')}원</strong></div></div>`;
+  return `<div class="modal-detail-table"><div><span>주문번호</span><strong>${escapeHTML(record.id)}</strong></div><div><span>주문 닉네임</span><strong>${escapeHTML(record.nickname)}</strong></div><div><span>주문 수량</span><strong>${record.quantity}개</strong></div><div><span>수령 행사</span><strong>${EVENTS[record.event]?.name ?? ''}</strong></div><div><span>수령일</span><strong>${pickupDateLabel(record.event,record.pickupDate)}</strong></div><div><span>입금자명</span><strong>${escapeHTML(record.payerName)}</strong></div><div><span>상태</span><strong>${ORDER_STATUS[record.status] ?? ''}</strong></div><div><span>입금 금액</span><strong>${won(record.totalAmount)}</strong></div></div>`;
 }
 async function submitOrder() {
   let record;
   try {record = validateOrder(draftRecord());} catch(error) {toast(error.message);return;}
+  const editing = panelMode === 'edit' ? editingId : null;
   await busy($('#submit-order'), async () => {
     try {
-      const {order, created} = await api('PUT','/api/orders/mine',record);
-      me.order = order;refresh();
-      openModal(`<div class="modal-label">주문서</div><h2 id="modal-title">${created ? '주문서를 접수했어요' : '주문서를 수정했어요'}</h2>${responseRows(order)}<p>아직 주문 확정 전이에요. 입금 안내에 따라 ${GROUP_BUY.paymentDeadlineLabel}까지 입금해주세요. 운영자가 입금 내역을 확인하면 '입금 확인 완료'로 바뀌어요.</p><div class="modal-actions"><button class="button primary" data-action="order">입금 안내 보기</button><button class="button secondary" data-action="my">내 주문 확인</button></div>`);
+      const {order, created} = editing
+        ? {...await api('PUT',`/api/orders/${encodeURIComponent(editing)}`,record), created:false}
+        : await api('POST','/api/orders',{...record, requestKey});
+      replaceOrder(order);
+      requestKey = crypto.randomUUID();
+      clearDraft();
+      showPanel('list', {focus:false});
+      openModal(`<div class="modal-label">주문서</div><h2 id="modal-title">${editing ? '주문서를 수정했어요' : created ? '주문서를 접수했어요' : '이미 접수된 주문서예요'}</h2>${orderProgress(order)}${responseRows(order)}<p>아직 주문 확정 전이에요. 입금 안내에 따라 ${GROUP_BUY.paymentDeadlineLabel}까지 입금해주세요. 운영자가 입금 내역을 확인하면 '입금 확인 완료'로 바뀌어요.</p><div class="modal-actions"><button class="button primary" data-action="order" data-id="${escapeHTML(order.id)}">입금 안내 보기</button><button class="button secondary" data-action="my">주문 목록</button></div>`);
     } catch(error) {
       if(error.status === 401) {await loadMe();loginPrompt('order');return;}
       toast(error.message);await loadMe();
@@ -189,39 +239,46 @@ async function submitOrder() {
 }
 form.addEventListener('submit', event => {
   event.preventDefault();
-  const active = activeOrder();
-  if(signedIn() && active && (!ordersOpen() || active.status !== 'payment_pending')) {myOrder();return;}
   if(!form.reportValidity()) return;
   if(!ordersOpen()) {toast('주문 접수가 마감되었어요.');refresh();return;}
   if(!signedIn()) {me.user ? nicknameForm(true) : loginPrompt('order');return;}
   submitOrder();
 });
-async function myOrder() {
+/** 내 주문 전체(모달). 주문을 누르면 상세로 들어간다. */
+async function myOrders() {
   if(!signedIn()) {loginPrompt('my');return;}
   await loadMe();
-  const order = me.order;
-  if(!order) {openModal(`<div class="modal-label">내 주문</div><h2 id="modal-title">주문 내역이 없어요</h2><p>${escapeHTML(nickname())} 님, 주문 수량과 수령할 행사를 선택해주세요.</p><button class="button primary" data-action="go-form">주문서 작성</button>`);return;}
+  if(!me.orders.length) {openModal(`<div class="modal-label">내 주문</div><h2 id="modal-title">주문 내역이 없어요</h2><p>${escapeHTML(nickname())} 님, 주문 수량과 수령할 행사를 선택해주세요.</p>${ordersOpen() ? '<button class="button primary" data-action="new-order">주문서 작성</button>' : ''}`);return;}
+  openModal(`<div class="modal-label">내 주문</div><h2 id="modal-title">주문 ${me.orders.length}건</h2><ul class="order-cards">${me.orders.map(orderCard).join('')}</ul>${ordersOpen() ? '<button class="button primary" data-action="new-order">+ 추가로 주문하기</button>' : ''}`);
+}
+async function orderDetail(id) {
+  if(!signedIn()) {loginPrompt('my');return;}
+  await loadMe();
+  const order = findOrder(id);
+  if(!order) {toast('주문을 찾을 수 없어요.');myOrders();return;}
   const closed = ['cancelled','refunded'].includes(order.status);
   const editable = ordersOpen() && order.status === 'payment_pending';
   const needsDate = !order.pickupDate && EVENTS[order.event]?.available !== false && ordersOpen() && ['payment_pending','verification_requested'].includes(order.status);
   const cancellable = !['cancelled','cancel_requested','refunded','picked_up'].includes(order.status);
   const note = {payment_pending:'입금 후 \'입금 확인 요청\'을 눌러주세요. 요청만으로 주문이 확정되지는 않아요.',verification_requested:'운영자가 입금 내역을 확인하고 있어요. 확인되면 \'입금 확인 완료\'로 바뀌어요.',paid:'입금이 확인됐어요. 선택한 행사에서 수령해주세요.',cancel_requested:'운영자가 취소와 환불 여부를 확인하고 있어요.',cancelled:'취소된 주문이에요.',refunded:'환불이 완료된 주문이에요.',picked_up:'수령이 완료된 주문이에요.'}[order.status] ?? '';
-  openModal(`<div class="modal-label">내 주문</div><h2 id="modal-title">주문 내역</h2>${orderProgress(order)}${responseRows(order)}<p>${note}</p><div class="modal-actions">${needsDate ? '<button class="button primary" data-action="pickup-date">수령일 추가</button>' : ''}${editable ? '<button class="button primary" data-action="edit">주문서 수정</button>' : ''}${!closed ? '<button class="button secondary" data-action="order">입금 안내</button>' : ordersOpen() ? '<button class="button primary" data-action="go-form">새 주문서 작성</button>' : ''}</div>${cancellable ? '<button class="danger-action" data-action="cancel-confirm">주문 취소</button>' : ''}`);
+  const id_ = escapeHTML(order.id);
+  openModal(`<div class="modal-label">내 주문</div><h2 id="modal-title">주문 내역</h2>${orderProgress(order)}${responseRows(order)}<p>${note}</p><div class="modal-actions">${needsDate ? `<button class="button primary" data-action="pickup-date" data-id="${id_}">수령일 추가</button>` : ''}${editable ? `<button class="button primary" data-action="edit" data-id="${id_}">주문서 수정</button>` : ''}${!closed ? `<button class="button secondary" data-action="order" data-id="${id_}">입금 안내</button>` : ''}<button class="button secondary" data-action="my">주문 목록</button></div>${cancellable ? `<button class="danger-action" data-action="cancel-confirm" data-id="${id_}">주문 취소</button>` : ''}`);
 }
-function paymentGuide() {
-  const record = signedIn() ? activeOrder() : null;
-  if(!record) {openModal(`<div class="modal-label">입금 안내</div><h2 id="modal-title">주문서를 먼저 작성해주세요</h2><p>주문서를 제출하면 주문번호와 입금 안내를 확인할 수 있어요.</p><button class="button primary" data-action="go-form">주문서 작성</button>`);return;}
+function paymentGuide(id) {
+  const record = signedIn() ? findOrder(id) : null;
+  if(!record || ['cancelled','refunded'].includes(record.status)) {myOrders();return;}
   const pending = record.status === 'payment_pending';
-  openModal(`<div class="modal-label">입금 안내</div><h2 id="modal-title">${pending ? '주문서 제출 다음 단계' : '입금 안내'}</h2>${orderProgress(record)}${responseRows(record)}<div class="payment-details"><p class="payment-bank-name"><strong>${escapeHTML(GROUP_BUY.bankAccount.bank)}</strong><span>예금주 ${escapeHTML(GROUP_BUY.bankAccount.holder)}</span></p><p class="payment-account-number">${escapeHTML(GROUP_BUY.bankAccount.number)}</p><div class="payment-copy-buttons"><button class="text-button" data-action="copy-account">계좌번호 복사</button><button class="text-button" data-action="copy-amount">입금 금액 복사</button></div><p class="payment-deadline">입금 기한: ${GROUP_BUY.paymentDeadlineLabel}<br>주문 마감: ${GROUP_BUY.ordersCloseLabel}</p></div><p>${paymentWindowOpen() ? `입금자명 <strong>${escapeHTML(record.payerName)}</strong>(으)로 ${record.totalAmount.toLocaleString('ko-KR')}원을 보내주세요. 입금한 뒤 아래 버튼을 눌러주세요.` : '입금 기한이 지났어요. 입금 여부는 운영자가 실제 입금 내역으로 확인해요.'} 운영자가 입금 내역을 대조한 뒤 주문이 확정돼요.</p><button class="button primary" data-action="payment-request" ${pending ? '' : 'disabled'}>${pending ? '입금했어요 · 입금 확인 요청' : ORDER_STATUS[record.status]}</button><button class="button secondary" data-action="my">내 주문 확인</button>`);
+  const id_ = escapeHTML(record.id);
+  openModal(`<div class="modal-label">입금 안내</div><h2 id="modal-title">${pending ? '주문서 제출 다음 단계' : '입금 안내'}</h2>${orderProgress(record)}${responseRows(record)}<div class="payment-details"><p class="payment-bank-name"><strong>${escapeHTML(GROUP_BUY.bankAccount.bank)}</strong><span>예금주 ${escapeHTML(GROUP_BUY.bankAccount.holder)}</span></p><p class="payment-account-number">${escapeHTML(GROUP_BUY.bankAccount.number)}</p><div class="payment-copy-buttons"><button class="text-button" data-action="copy-account" data-id="${id_}">계좌번호 복사</button><button class="text-button" data-action="copy-amount" data-id="${id_}">입금 금액 복사</button></div><p class="payment-deadline">입금 기한: ${GROUP_BUY.paymentDeadlineLabel}<br>주문 마감: ${GROUP_BUY.ordersCloseLabel}</p></div><p>${paymentWindowOpen() ? `입금자명 <strong>${escapeHTML(record.payerName)}</strong>(으)로 ${won(record.totalAmount)}을 보내주세요. 입금한 뒤 아래 버튼을 눌러주세요.` : '입금 기한이 지났어요. 입금 여부는 운영자가 실제 입금 내역으로 확인해요.'} 운영자가 입금 내역을 대조한 뒤 주문이 확정돼요.</p><button class="button primary" data-action="payment-request" data-id="${id_}" ${pending ? '' : 'disabled'}>${pending ? '입금했어요 · 입금 확인 요청' : ORDER_STATUS[record.status]}</button><button class="button secondary" data-action="order-detail" data-id="${id_}">주문 내역</button>`);
 }
-function addPickupDate() {
-  const record = activeOrder();
+function addPickupDate(id) {
+  const record = findOrder(id);
   if(!signedIn() || !record) {loginPrompt('my');return;}
   openModal(`<div class="modal-label">내 주문</div><h2 id="modal-title">수령일을 선택해주세요</h2><p>${EVENTS[record.event].name}에서 수령할 날짜를 골라주세요. 주문번호와 입금 확인 상태는 그대로 유지돼요.</p><form id="add-pickup-date-form"><div class="pickup-days">${pickupDayChoices(record.event,record.pickupDate,'newPickupDate')}</div><button class="button primary" type="submit" id="pickup-date-submit">수령일 저장</button><p class="field-error" id="pickup-date-error" role="alert"></p></form>`);
   $('#add-pickup-date-form').addEventListener('submit',event => {
     event.preventDefault();const pickupDate = new FormData(event.currentTarget).get('newPickupDate');
     busy($('#pickup-date-submit'), async () => {
-      try {me.order = (await api('PATCH','/api/orders/mine/pickup-date',{pickupDate})).order;refresh();await myOrder();toast('수령일을 저장했어요.');}
+      try {replaceOrder((await api('PATCH',`/api/orders/${encodeURIComponent(id)}/pickup-date`,{pickupDate})).order);refresh();await orderDetail(id);toast('수령일을 저장했어요.');}
       catch(error) {$('#pickup-date-error').textContent = error.message;}
     });
   });
@@ -229,19 +286,19 @@ function addPickupDate() {
 function withdrawConfirm() {
   if(!signedIn()) {loginPrompt();return;}
   openModal(`<div class="modal-label">내 계정</div><h2 id="modal-title">회원탈퇴</h2><p><span class="nickname-display">${escapeHTML(nickname())}</span> 님의 계정을 삭제합니다.</p><ul class="withdraw-list"><li>진행 중인 주문이 있으면 주문 처리 후 탈퇴할 수 있어요.</li><li>닉네임과 문의 대화가 삭제되고, 카카오 계정과의 연결이 해제돼요.</li><li>지난 주문 기록(주문번호·수량·입금자명·금액)은 입금 대조와 환불 확인을 위해 닉네임 없이 보관돼요.</li></ul><label class="withdraw-checkbox"><input id="withdraw-consent" type="checkbox"><span>위 내용을 확인했어요.</span></label><p id="withdraw-error" class="field-error" role="alert"></p><div class="modal-actions"><button class="button secondary" data-action="close">취소</button><button class="button danger" id="withdraw-button" data-action="withdraw" disabled>탈퇴하기</button></div>`);
-  const blocked = !!activeOrder() && !['picked_up'].includes(activeOrder().status);
-  if(blocked) $('#withdraw-error').textContent = '진행 중인 주문이 있어요. 주문 처리 후 탈퇴할 수 있어요.';
+  const blocked = openOrders().length > 0;
+  if(blocked) $('#withdraw-error').textContent = `진행 중인 주문이 ${openOrders().length}건 있어요. 주문 처리 후 탈퇴할 수 있어요.`;
   $('#withdraw-consent').addEventListener('change', () => $('#withdraw-button').disabled = blocked || !$('#withdraw-consent').checked);
 }
-async function copyPaymentValue(kind) {
-  const record = activeOrder();
+async function copyPaymentValue(kind, id) {
+  const record = findOrder(id);
   if(!signedIn() || !record) {toast('주문 내역을 먼저 확인해주세요.');return;}
   const isAccount = kind === 'account';
   const value = isAccount ? GROUP_BUY.bankAccount.number.replace(/\D/g,'') : String(record.totalAmount);
   const label = isAccount ? '계좌번호' : '입금 금액';
   try {await navigator.clipboard.writeText(value);toast(`${label}을 복사했어요.`);}
   catch {
-    openModal(`<div class="modal-label">입금 안내</div><h2 id="modal-title">${label} 복사</h2><p>아래 값을 선택해 복사해주세요.</p><input id="payment-copy-value" class="share-link" readonly aria-label="${label}"><button class="button secondary" data-action="order">입금 안내로 돌아가기</button>`);
+    openModal(`<div class="modal-label">입금 안내</div><h2 id="modal-title">${label} 복사</h2><p>아래 값을 선택해 복사해주세요.</p><input id="payment-copy-value" class="share-link" readonly aria-label="${label}"><button class="button secondary" data-action="order" data-id="${escapeHTML(id)}">입금 안내로 돌아가기</button>`);
     $('#payment-copy-value').value=value;$('#payment-copy-value').focus();$('#payment-copy-value').select();
   }
 }
@@ -303,46 +360,52 @@ document.addEventListener('click', event => {
   if(!$('#account-area').contains(event.target)) toggleMenu(false);
   const button = event.target.closest('[data-action]');if(!button) return;
   toggleMenu(false);
+  const id = button.dataset.id;
   switch(button.dataset.action) {
     case 'login': loginPrompt();break;
     case 'nickname-edit': nicknameForm();break;
     case 'logout':
       busy(button, async () => {
         try {await api('POST','/api/auth/logout');} catch {}
-        me = {user:null, order:null, unread:0};clearDraft();refresh();closeModal();toast('로그아웃했어요. 주문 내역은 유지돼요.');$('#header-login').focus();
+        me = {user:null, orders:[], unread:0};clearDraft();refresh();closeModal();toast('로그아웃했어요. 주문 내역은 유지돼요.');$('#header-login').focus();
       });break;
     case 'withdraw-confirm': withdrawConfirm();break;
     case 'withdraw':
       if(!$('#withdraw-consent')?.checked) return;
       busy(button, async () => {
-        try {await api('DELETE','/api/me');me = {user:null, order:null, unread:0};clearDraft();refresh();closeModal();toast('탈퇴했어요. 이용해주셔서 고마워요.');$('#header-login').focus();}
+        try {await api('DELETE','/api/me');me = {user:null, orders:[], unread:0};clearDraft();refresh();closeModal();toast('탈퇴했어요. 이용해주셔서 고마워요.');$('#header-login').focus();}
         catch(error) {$('#withdraw-error').textContent = error.message;}
       });break;
-    case 'my': myOrder();break;
+    case 'my': myOrders();break;
+    case 'order-detail': orderDetail(id);break;
+    case 'new-order':
+      if(!signedIn()) {me.user ? nicknameForm(true) : loginPrompt('order');break;}
+      if(!ordersOpen()) {toast('주문 접수가 마감되었어요.');break;}
+      showPanel('new');break;
+    case 'show-list': showPanel('list');break;
     case 'message': messages();break;
     case 'admin': location.href = '/admin';break;
-    case 'pickup-date': addPickupDate();break;
-    case 'order': paymentGuide();break;
-    case 'copy-account': copyPaymentValue('account');break;
-    case 'copy-amount': copyPaymentValue('amount');break;
+    case 'pickup-date': addPickupDate(id);break;
+    case 'order': paymentGuide(id);break;
+    case 'copy-account': copyPaymentValue('account', id);break;
+    case 'copy-amount': copyPaymentValue('amount', id);break;
     case 'payment-request':
       busy(button, async () => {
-        try {me.order = (await api('POST','/api/orders/mine/payment-request')).order;refresh();await myOrder();toast('입금 확인을 요청했어요. 운영자가 확인하면 상태가 바뀌어요.');}
+        try {replaceOrder((await api('POST',`/api/orders/${encodeURIComponent(id)}/payment-request`)).order);refresh();await orderDetail(id);toast('입금 확인을 요청했어요. 운영자가 확인하면 상태가 바뀌어요.');}
         catch(error) {toast(error.message);await loadMe();}
       });break;
     case 'edit':
       if(!signedIn()) loginPrompt('my');
-      else if(!ordersOpen() || activeOrder()?.status !== 'payment_pending') toast('현재 상태에서는 주문서를 수정할 수 없어요.');
-      else {setDraft(activeOrder());goToForm();toast('주문서를 변경하고 수정 버튼을 눌러주세요.');}break;
-    case 'go-form': if(!activeOrder()) clearDraft();goToForm();break;
+      else if(!ordersOpen() || findOrder(id)?.status !== 'payment_pending') toast('현재 상태에서는 주문서를 수정할 수 없어요.');
+      else {showPanel('edit', {orderId:id});toast('주문서를 바꾸고 \'수정 내용 저장\'을 눌러주세요.');}break;
     case 'cancel-confirm': {
       if(!signedIn()) {loginPrompt('my');break;}
-      const instant = activeOrder()?.status === 'payment_pending' && ordersOpen();
-      openModal(`<div class="modal-label">내 주문</div><h2 id="modal-title">주문 취소</h2><p>${instant ? '입금 전 주문이라 바로 취소돼요.' : '입금 확인 요청 이후 또는 주문 마감 후에는 운영자가 입금 내역을 확인한 뒤 취소·환불을 처리해요.'} 주문 기록은 삭제하지 않아요.</p><div class="modal-actions"><button class="button secondary" data-action="my">돌아가기</button><button class="button primary" data-action="cancel">${instant ? '주문 취소' : '취소 요청'}</button></div>`);break;
+      const instant = findOrder(id)?.status === 'payment_pending' && ordersOpen();
+      openModal(`<div class="modal-label">내 주문</div><h2 id="modal-title">주문 취소</h2><p>주문번호 <strong>${escapeHTML(id)}</strong>을 취소해요. ${instant ? '입금 전 주문이라 바로 취소돼요.' : '입금 확인 요청 이후 또는 주문 마감 후에는 운영자가 입금 내역을 확인한 뒤 취소·환불을 처리해요.'} 주문 기록은 삭제하지 않아요.</p><div class="modal-actions"><button class="button secondary" data-action="order-detail" data-id="${escapeHTML(id)}">돌아가기</button><button class="button primary" data-action="cancel" data-id="${escapeHTML(id)}">${instant ? '주문 취소' : '취소 요청'}</button></div>`);break;
     }
     case 'cancel':
       busy(button, async () => {
-        try {me.order = (await api('POST','/api/orders/mine/cancel')).order;refresh();await myOrder();toast(me.order.status === 'cancelled' ? '주문을 취소했어요.' : '취소를 요청했어요. 운영자가 확인 후 처리해요.');}
+        try {const {order} = await api('POST',`/api/orders/${encodeURIComponent(id)}/cancel`);replaceOrder(order);if(editingId === id) showPanel('list',{focus:false});refresh();await orderDetail(id);toast(order.status === 'cancelled' ? '주문을 취소했어요.' : '취소를 요청했어요. 운영자가 확인 후 처리해요.');}
         catch(error) {toast(error.message);await loadMe();}
       });break;
     case 'close': closeModal();break;
@@ -366,7 +429,8 @@ updateCountdown();
 setInterval(() => updateCountdown(),1000);
 refresh();
 loadMe().then(() => {
-  if(activeOrder()) setDraft(activeOrder());
+  panelMode = me.orders.length ? 'list' : 'new';
+  refresh();
   handleLoginReturn();
 });
 // 다른 기기에서 바뀐 주문 상태·새 답변을 가끔 다시 확인한다.

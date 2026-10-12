@@ -35,10 +35,12 @@ model Session {
 }
 
 /// status: payment_pending | verification_requested | paid | cancel_requested | cancelled | refunded | picked_up
-/// 사용자당 진행 중(cancelled/refunded 이외) 주문은 하나. 가격·금액은 주문 시점 값을 저장한다.
+/// 한 사용자가 여러 건 주문할 수 있다. 가격·금액은 주문 시점 값을 저장한다.
+/// requestKey: 화면이 주문서마다 만드는 값. 같은 키로 두 번 제출돼도(연타·재전송) 주문은 하나만 생긴다.
 model Order {
   id          String    @id
   userId      Int
+  requestKey  String?   @unique
   nickname    String
   quantity    Int
   event       String

@@ -330,3 +330,22 @@ dialog::backdrop{background:#000b}
 .message-compose-bottom{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:8px;font-size:10px;color:#acb899}.message-compose-bottom .button{margin:0;padding:10px 18px;min-height:36px;font-size:11px;width:auto}.message-compose-bottom .over-limit{color:#ffa99b}
 .message-view-switch{padding-top:12px;border-top:1px solid #414c34;margin-top:12px}.message-view-switch .text-button{font-size:10px;color:#b5c0a6}
 @media(max-width:700px){.inquiry-launcher{right:18px;bottom:114px;padding:8px 11px;font-size:11px}.modal-messages .modal-shell{padding:30px 17px 18px}.message-history{height:clamp(140px,30dvh,280px)}.message-compose textarea{font-size:16px}.message-bubble{font-size:12px}}
+
+/* 접수된 주문 목록(주문서 자리) */
+.order-cards{list-style:none;margin:0 0 4px;padding:0;display:flex;flex-direction:column;gap:10px}
+.order-card{border:1px solid #3d4433;background:#1c1f18;border-radius:6px;padding:14px 16px}
+.order-card.is-closed{opacity:.6}
+.order-card-top{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.order-card-top strong{font-size:13px;letter-spacing:.2px}
+.order-badge{flex-shrink:0;font-size:10px;padding:3px 9px;border-radius:999px;background:#313b26;color:#c4d2af}
+.order-badge.s-verification_requested{background:#4a4413;color:#ffe97a}
+.order-badge.s-paid,.order-badge.s-picked_up{background:#3d4a24;color:var(--lime)}
+.order-badge.s-cancel_requested{background:#4a2a17;color:#ffb27a}
+.order-badge.s-cancelled,.order-badge.s-refunded{background:#2b2b2b;color:#999}
+.order-card p{margin:8px 0 0;font-size:12px;color:#d5dbc8}
+.order-card p.order-card-sub{margin-top:4px;font-size:11px;color:#a9b39a}
+.order-card-actions{display:flex;gap:14px;margin-top:12px}
+.order-card-actions .text-button{font-size:11px}
+.add-order{width:100%;margin-top:14px}
+.back-to-list{display:block;margin:0 0 12px;font-size:11px;color:#b5c0a6}
+.modal-shell .order-cards{margin:18px 0}

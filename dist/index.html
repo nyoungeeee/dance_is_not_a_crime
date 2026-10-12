@@ -9,7 +9,7 @@
   <meta property="og:image" content="https://dance-is-not-a-crime.b201.kr/assets/slogan.png">
   <title>춤은 불법이 아니다 | 슬로건 공동구매</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%23161616'/%3E%3Ctext x='32' y='48' text-anchor='middle' font-size='49' fill='%23d7fa61'%3E✳︎%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/styles.css?v=31"><script type="module" src="/app.js?v=25"></script><script type="module" src="/music.js?v=26"></script>
+  <link rel="stylesheet" href="/styles.css?v=32"><script type="module" src="/app.js?v=26"></script><script type="module" src="/music.js?v=26"></script>
 </head>
 <body>
   <div class="header-region">
@@ -68,8 +68,14 @@
         <p class="small-note">주문서 작성만으로 주문이 확정되지는 않아요.</p>
       </div>
       <div class="survey-form-panel">
+        <div id="order-list-panel" class="order-list-panel" hidden>
+          <div class="form-heading"><h3>접수된 주문</h3><p id="order-list-status"></p></div>
+          <ul class="order-cards" id="order-cards"></ul>
+          <button type="button" class="button primary add-order" id="add-order" data-action="new-order"><span aria-hidden="true">+</span> 추가로 주문하기</button>
+          <p class="auth-note" id="order-list-note">주문마다 입금 안내가 따로 나와요. 각 주문 금액을 입금하고 입금 확인을 요청해주세요.</p>
+        </div>
         <form id="order-form">
-          <div class="form-heading"><h3>주문서 작성</h3><p id="profile-status">카카오 로그인 후 닉네임을 설정해주세요.</p></div>
+          <div class="form-heading"><button type="button" class="text-button back-to-list" id="back-to-list" data-action="show-list" hidden>← 접수된 주문 보기</button><h3 id="form-title">주문서 작성</h3><p id="profile-status">카카오 로그인 후 닉네임을 설정해주세요.</p></div>
           <fieldset class="field"><legend>주문 수량 <span class="required">필수</span></legend><div class="quantity-row"><span>슬로건</span><div class="stepper"><button type="button" id="minus" aria-label="수량 줄이기">−</button><input id="quantity" name="quantity" type="number" inputmode="numeric" min="1" max="20" step="1" value="1" required autocomplete="off" aria-label="주문 수량"><button type="button" id="plus" aria-label="수량 늘리기">+</button></div><span>개</span></div><p class="field-hint">1~20개까지 직접 입력할 수 있어요. 1개당 5,000원입니다.</p></fieldset>
           <fieldset class="field"><legend>수령 행사 <span class="required">필수</span></legend><div class="event-options"><label><input type="radio" name="event" value="inmufe" required><span><strong>경기인디뮤직페스티벌</strong><small>10/17(토) · 10/18(일)</small></span></label><label class="event-coming" aria-disabled="true"><input type="radio" name="event" value="sejong" disabled><span><span class="event-name-row"><strong>세종보헤미안뮤직페스티벌</strong><em class="coming-soon">(추후 오픈 예정)</em></span><small>10/30(금) · 10/31(토) · 11/1(일)</small></span></label></div><p class="field-hint">선택한 행사에서 직접 수령해주세요. 택배는 제공하지 않아요.</p></fieldset>
           <fieldset class="field"><legend>수령일 <span class="required">필수</span></legend><div class="pickup-days" id="pickup-date-options" aria-live="polite"><p class="field-hint">수령할 행사를 먼저 선택해주세요.</p></div><p class="field-hint">선택한 날짜는 내 주문에서도 확인할 수 있어요.</p></fieldset>
@@ -77,7 +83,6 @@
           <div class="order-price-row"><span>주문 금액</span><strong id="order-total" aria-live="polite">5,000원</strong></div><label class="consent"><input id="consent" type="checkbox" required><span>주문 수량과 수령 행사·날짜, 입금자명을 확인했어요.</span></label>
           <button class="button kakao submit-button" type="submit" id="submit-order"><svg id="kakao-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3C6.5 3 2 6.4 2 10.6c0 2.7 1.8 5 4.5 6.4l-.9 3.5 4-2.4c.8.1 1.6.2 2.4.2 5.5 0 10-3.5 10-7.7S17.5 3 12 3Z"/></svg><span id="submit-label">카카오 로그인하고 주문서 작성</span></button>
           <p class="auth-note">카카오에서는 회원번호만 받아요. 주문은 운영자가 입금을 확인한 뒤 확정돼요.</p>
-          <div class="saved-notice" id="saved-notice" hidden><p><strong>접수된 주문이 있어요.</strong><span id="saved-status"></span></p><button class="text-button" type="button" data-action="my">확인</button></div>
         </form>
       </div>
     </section>
