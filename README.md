@@ -83,7 +83,7 @@ curl -fsS http://127.0.0.1:3220/api/health
 - 컨테이너가 시작할 때마다 `prisma migrate deploy`로 DB 마이그레이션을 적용한다.
 - SQLite는 writer가 하나여야 하므로 레플리카를 늘리지 않는다.
 - `scripts/deploy.sh`: `.env` 확인 → 배포 전 백업 → `origin/main`으로 fast-forward → 재빌드 → `/api/health` 확인. 실패 시 직전 커밋으로 되돌린다.
-- `.github/workflows/ci-cd.yml`: PR·main 푸시마다 서버 테스트와 Docker 확인. 저장소 변수 `DEPLOY_ENABLED=true`이면 main에서 `deploy` 잡이 서버(`b201@141.164.62.18`, 호스트 키 고정)에 SSH로 들어가 `scripts/deploy.sh`를 실행한다. 배포 키는 b201 `authorized_keys`에 `restrict,command="/home/b201/dance/scripts/deploy.sh"`로 등록해 배포 말고는 아무것도 못 한다. Secret `DEPLOY_SSH_KEY`, Environment `production`.
+- `.github/workflows/ci-cd.yml`: PR·main 푸시마다 서버 테스트와 Docker 확인. 저장소 변수 `DEPLOY_ENABLED=true`이면 main에서 `deploy` 잡이 서버의 `scripts/deploy.sh`를 실행한다. 서버 22번 포트는 외부(GitHub)에서 막혀 있어 Cloudflare Access 터널로 들어간다: Actions → `cloudflared access ssh`(서비스 토큰) → `dance-ssh.b201.kr`(Access 앱, 서비스 토큰 정책) → 서버 `localhost:22`. 배포 키는 b201 `authorized_keys`에 `restrict,command="/home/b201/dance/scripts/deploy.sh"`로 등록해 배포 말고는 아무것도 못 한다. Secrets `DEPLOY_SSH_KEY`·`CF_ACCESS_CLIENT_ID`·`CF_ACCESS_CLIENT_SECRET`, Environment `production`.
 
 ### 백업·복원
 
