@@ -233,7 +233,7 @@ const PROGRESS_STEPS = ['주문서 제출','입금 확인 요청','입금 확인
 function orderProgress(record) {
   if(['cancel_requested','cancelled','refunded'].includes(record.status)) return `<div class="order-progress is-cancel"><span>${ORDER_STATUS[record.status]}</span></div>`;
   const done = {payment_pending:1,verification_requested:2,paid:3,picked_up:4}[record.status] ?? 1;
-  return `<div class="order-progress" aria-label="주문 진행 단계">${PROGRESS_STEPS.map((step, i) => i < done ? `<span class="done">✓ ${step}</span>` : i === done ? `<span class="current" aria-current="step">${step}</span>` : `<span>${step}</span>`).join('')}</div>`;
+  return `<div class="order-progress" aria-label="주문 진행 단계">${PROGRESS_STEPS.map((step, i) => i < done ? `<span class="done">✓ ${step}</span>` : i === done ? `<span class="current" aria-current="step">${i === 3 ? '현장 수령 대기' : step}</span>` : `<span>${step}</span>`).join('')}</div>`;
 }
 function responseRows(record) {
   return `<div class="modal-detail-table"><div><span>주문번호</span><strong>${escapeHTML(record.id)}</strong></div><div><span>주문 닉네임</span><strong>${escapeHTML(record.nickname)}</strong></div><div><span>주문 수량</span><strong>${record.quantity}개</strong></div><div><span>수령 행사</span><strong>${EVENTS[record.event]?.name ?? ''}</strong></div><div><span>수령일</span><strong>${pickupDateLabel(record.event,record.pickupDate)}</strong></div><div><span>입금자명</span><strong>${escapeHTML(record.payerName)}</strong></div><div><span>상태</span><strong>${ORDER_STATUS[record.status] ?? ''}</strong></div><div><span>입금 금액</span><strong>${won(record.totalAmount)}</strong></div></div>`;

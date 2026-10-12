@@ -1,6 +1,6 @@
 :root{--ink:#f1f2e9;--muted:#b3b7aa;--line:#393d33;--paper:#161714;--panel:#20221c;--lime:#d7fa61;color-scheme:dark}
 *{box-sizing:border-box}
-body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.5 "Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",Arial,sans-serif}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.5 "Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",Arial,sans-serif;word-break:keep-all;overflow-wrap:break-word}
 button,input,select,textarea{font:inherit;color:inherit}
 button{cursor:pointer}
 .bar{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:16px;padding:12px 20px;background:#1c1e18;border-bottom:1px solid var(--line)}

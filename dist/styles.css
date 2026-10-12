@@ -4,7 +4,7 @@
   color-scheme:dark; scroll-behavior:smooth; scroll-padding-top:25px; scrollbar-gutter:stable;
 }
 *{box-sizing:border-box}
-body{margin:0;background:var(--paper);color:var(--ink);font-family:"Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",Arial,sans-serif;-webkit-font-smoothing:antialiased}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:"Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",Arial,sans-serif;-webkit-font-smoothing:antialiased;word-break:keep-all;overflow-wrap:break-word}
 a{color:inherit;text-decoration:none}
 button,input,select{font:inherit}
 button{cursor:pointer;color:inherit}
