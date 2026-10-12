@@ -48,7 +48,7 @@ curl -fsS http://127.0.0.1:3220/healthz
 ```
 
 - 프로젝트 이름 `dance`. 앱은 `127.0.0.1:${HOST_PORT:-3220}`에만 열린다. B201·한입팟(3210) 포트와 겹치지 않는지 확인할 것
-- Cloudflare Tunnel `b201`에 공개 호스트(예: `dance.b201.kr`) → `http://localhost:3220`을 추가한다
+- Cloudflare Tunnel `b201`에 공개 호스트 `dance-is-not-a-crime.b201.kr` → `http://localhost:3220`을 추가한다
 - `scripts/deploy.sh`: `origin/main`으로 fast-forward → 재빌드 → `/healthz` 확인. 실패 시 직전 커밋으로 되돌린다
 - `.github/workflows/ci-cd.yml`: PR·main 푸시마다 Docker 빌드와 응답 확인. 저장소 변수 `DEPLOY_ENABLED=true`일 때만 main에서 `deploy` 잡이 서버의 `scripts/deploy.sh`를 실행한다
 - 접속 경로는 한입팟과 같다: Actions → `cloudflared access ssh` → `hanip-ssh.b201.kr` → 서버 `localhost:22`

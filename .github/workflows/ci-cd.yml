@@ -39,7 +39,7 @@ jobs:
     env:
       SSH_HOST: hanip-ssh.b201.kr
       SSH_USER: b201
-      PUBLIC_URL: https://dance.b201.kr
+      PUBLIC_URL: https://dance-is-not-a-crime.b201.kr
     steps:
       - name: cloudflared 설치
         run: |
