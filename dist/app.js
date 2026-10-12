@@ -279,7 +279,7 @@ async function orderDetail(id) {
   const cancellable = !['cancelled','cancel_requested','refunded','picked_up'].includes(order.status);
   const note = {payment_pending:'입금 후 \'입금 확인 요청\'을 눌러주세요. 요청만으로 주문이 확정되지는 않아요.',verification_requested:'운영자가 입금 내역을 확인하고 있어요. 확인되면 \'입금 확인 완료\'로 바뀌어요.',paid:'입금이 확인됐어요. 선택한 행사에서 수령해주세요.',cancel_requested:'운영자가 취소와 환불 여부를 확인하고 있어요.',cancelled:'취소된 주문이에요.',refunded:'환불이 완료된 주문이에요.',picked_up:'수령이 완료된 주문이에요.'}[order.status] ?? '';
   const id_ = escapeHTML(order.id);
-  openModal(`<div class="modal-label">내 주문</div><h2 id="modal-title">주문 내역</h2>${orderProgress(order)}${responseRows(order)}<p>${note}</p><div class="modal-actions">${needsDate ? `<button class="button primary" data-action="pickup-date" data-id="${id_}">수령일 추가</button>` : ''}${editable ? `<button class="button primary" data-action="edit" data-id="${id_}">주문서 수정</button>` : ''}${!closed ? `<button class="button secondary" data-action="order" data-id="${id_}">입금 안내</button>` : ''}<button class="button secondary" data-action="my">주문 목록</button></div>${cancellable ? `<button class="danger-action" data-action="cancel-confirm" data-id="${id_}">주문 취소</button>` : ''}`);
+  openModal(`<div class="modal-label">내 주문</div><h2 id="modal-title">주문 내역</h2>${orderProgress(order)}${responseRows(order)}<p>${note}</p><div class="modal-actions">${needsDate ? `<button class="button primary" data-action="pickup-date" data-id="${id_}">수령일 추가</button>` : ''}${editable ? `<button class="button primary" data-action="edit" data-id="${id_}">주문서 수정</button>` : ''}${!closed ? `<button class="button secondary" data-action="order" data-id="${id_}">입금 안내</button>` : ''}<button class="button secondary" data-action="my">주문 목록</button></div>${cancellable ? `<button class="danger-action" data-action="cancel-confirm" data-id="${id_}">${order.status === 'payment_pending' && ordersOpen() ? '주문 취소' : '취소·환불 요청'}</button>` : ''}`);
 }
 /** 입금 안내 버튼 문구. 요청 뒤에는 누를 수 없고 진행 상태를 보여준다. */
 const PAYMENT_BUTTON = {payment_pending:'입금했어요 · 입금 확인 요청',verification_requested:'입금 확인 중…',paid:'입금 확인 완료',cancel_requested:'취소 확인 중…',picked_up:'수령 완료'};
@@ -338,7 +338,7 @@ function refreshInquiryBadge() {
   const count = signedIn() ? me.unread : 0;
   document.querySelectorAll('[data-inquiry-count]').forEach(badge => {badge.hidden = !count;badge.textContent = String(count);});
 }
-async function messages() {
+async function messages(prefill = '') {
   if(!signedIn()) {me.user ? nicknameForm(true) : loginPrompt('message');return;}
   openModal(`<div class="modal-label">운영자에게 문의</div><h2 id="modal-title">문의 메시지</h2><p class="message-preview-note">운영자가 확인 후 이 대화에 답변해요. 실시간 상담은 아니에요.</p><div class="message-history" id="message-history" role="log" aria-live="polite" aria-label="문의 대화"><p class="message-empty loading-block" role="status"><span class="spinner" aria-hidden="true"></span>대화를 불러오는 중이에요</p></div><form id="message-form" class="message-compose"><label class="sr-only" for="message-input">문의 내용</label><textarea id="message-input" rows="3" maxlength="1000" placeholder="궁금한 점을 남겨주세요" aria-describedby="message-count message-error"></textarea><div class="message-compose-bottom"><span id="message-count">0 / 500</span><button type="submit" class="button lime" id="message-send">보내기</button></div><p id="message-error" class="field-error" role="alert"></p></form>`);
   modal.classList.add('modal-messages');
@@ -369,6 +369,7 @@ async function messages() {
   messagePoll = setInterval(() => {if(modal.open && modal.classList.contains('modal-messages') && !document.hidden) reload();}, 30000);
   const input = $('#message-input'), send = $('#message-send');
   function updateCount() {const count=Array.from(input.value).length;$('#message-count').textContent=`${count} / 500`;$('#message-count').classList.toggle('over-limit',count>500);send.disabled=!input.value.trim()||count>500;$('#message-error').textContent='';}
+  if(prefill) {input.value = prefill;input.focus();input.setSelectionRange(input.value.length, input.value.length);}
   input.addEventListener('input', updateCount);updateCount();
   $('#message-form').addEventListener('submit', event => {
     event.preventDefault();
@@ -428,7 +429,14 @@ document.addEventListener('click', event => {
     case 'cancel-confirm': {
       if(!signedIn()) {loginPrompt('my');break;}
       const instant = findOrder(id)?.status === 'payment_pending' && ordersOpen();
-      openModal(`<div class="modal-label">내 주문</div><h2 id="modal-title">주문 취소</h2><p>주문번호 <strong>${escapeHTML(id)}</strong>을 취소해요. ${instant ? '입금 전 주문이라 바로 취소돼요.' : '입금 확인 요청 이후 또는 주문 마감 후에는 운영자가 입금 내역을 확인한 뒤 취소·환불을 처리해요.'} 주문 기록은 삭제하지 않아요.</p><div class="modal-actions"><button class="button secondary" data-action="order-detail" data-id="${escapeHTML(id)}">돌아가기</button><button class="button primary" data-action="cancel" data-id="${escapeHTML(id)}">${instant ? '주문 취소' : '취소 요청'}</button></div>`);break;
+      // 입금했을 수 있는 주문은 환불 계좌가 필요해 문의로 접수받는다. 상태는 운영자가 바꾼다.
+      if(instant) openModal(`<div class="modal-label">내 주문</div><h2 id="modal-title">주문 취소</h2><p>주문번호 <strong>${escapeHTML(id)}</strong>을 취소해요. 입금 전 주문이라 바로 취소돼요. 주문 기록은 삭제하지 않아요.</p><div class="modal-actions"><button class="button secondary" data-action="order-detail" data-id="${escapeHTML(id)}">돌아가기</button><button class="button primary" data-action="cancel" data-id="${escapeHTML(id)}">주문 취소</button></div>`);
+      else openModal(`<div class="modal-label">내 주문</div><h2 id="modal-title">취소·환불 요청</h2><p>입금한 주문의 취소·환불은 <strong>문의</strong>로 접수해주세요. 주문번호 <strong>${escapeHTML(id)}</strong>와 환불 받을 계좌(은행·계좌번호·예금주)를 남겨주시면 운영자가 입금 내역을 확인한 뒤 처리하고 문의 대화로 알려드려요.</p><div class="modal-actions"><button class="button secondary" data-action="order-detail" data-id="${escapeHTML(id)}">돌아가기</button><button class="button primary" data-action="refund-inquiry" data-id="${escapeHTML(id)}">문의로 취소·환불 요청</button></div>`);
+      break;
+    }
+    case 'refund-inquiry': {
+      const order = findOrder(id);
+      messages(order ? `주문번호 ${order.id} 취소·환불 요청합니다.\n(${order.quantity}개 · ${won(order.totalAmount)} · 입금자명 ${order.payerName})\n환불 받을 계좌: ` : '');break;
     }
     case 'cancel':
       busy(button, async () => {
