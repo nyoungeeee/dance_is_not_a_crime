@@ -388,10 +388,10 @@ dialog::backdrop{background:#000b}
 .group-buy-notice strong{display:block;font-size:13px;color:var(--ink);margin-bottom:2px}
 .price-note{font-size:.8em;color:#a9b39a;font-weight:400}
 /* 메인 이미지: 음악 재생 안내 */
-.dance-prompt{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin:12px 0 0;padding:11px 14px;border:1px dashed #6b7a4c;border-radius:999px;background:#1f2418;color:var(--lime);font-size:13px;font-weight:700;cursor:pointer;transition:background .15s ease,border-color .15s ease}
+.dance-prompt{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin:14px 0 18px;padding:11px 14px;border:1px dashed #6b7a4c;border-radius:999px;background:#1f2418;color:var(--lime);font-size:13px;font-weight:700;cursor:pointer;transition:background .15s ease,border-color .15s ease}
 .dance-prompt:hover{background:#28301d;border-color:var(--lime)}
 .dance-prompt-icon{display:inline-block;font-size:16px}
 .dance-prompt.is-playing .dance-prompt-icon{animation:dance-note .6s ease-in-out infinite alternate}
 @keyframes dance-note{to{transform:translateY(-3px) rotate(-12deg)}}
 @media(prefers-reduced-motion:reduce){.dance-prompt.is-playing .dance-prompt-icon{animation:none}}
-@media(max-width:700px){.dance-prompt{font-size:12px;padding:10px 12px}}
+@media(max-width:700px){.dance-prompt{font-size:12px;padding:10px 12px;margin:12px 0 16px}}
