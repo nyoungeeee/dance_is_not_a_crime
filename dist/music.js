@@ -144,12 +144,4 @@ audio.addEventListener('timeupdate', updateTime);
 audio.addEventListener('loadedmetadata', updateTime);
 audio.addEventListener('durationchange', updateTime);
 
-function startAfterGesture(event) {
-  if (!awaitingGesture || event.target?.closest?.('.music-player')) return;
-  if (event.type === 'keydown' && !['Enter',' '].includes(event.key)) return;
-  awaitingGesture = false;
-  void play({automatic:true});
-}
-document.addEventListener('click', startAfterGesture);
-document.addEventListener('keydown', startAfterGesture);
-void play({automatic:true});
+// 음악은 사용자가 재생 버튼(하단 플레이어·메인 이미지 안내)을 눌렀을 때만 시작한다. 자동재생·첫 터치 재생은 하지 않는다.

@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&family=Space+Mono:wght@700&display=block" rel="stylesheet">
+<style>
+:root{--ink:#f1f2e9;--muted:#b3b7aa;--line:#393d33;--paper:#161714;--lime:#d7fa61}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#000;font-family:'Noto Sans KR',sans-serif;color:var(--ink);word-break:keep-all}
+.c{position:relative;overflow:hidden;background:var(--paper)}
+.c::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 78% 42%,#d7fa6114,transparent 55%)}
+.star{display:inline-block;width:.62em;height:.62em;transform:rotate(12deg);vertical-align:.08em;margin-left:.12em}
+.star path{stroke:var(--lime);stroke-width:1.5;fill:none}
+.kicker{display:inline-flex;align-self:flex-start;align-items:center;gap:14px;color:var(--lime);font-weight:700;letter-spacing:.02em}
+.kicker i{display:block;width:12px;height:12px;border-radius:50%;background:var(--lime);box-shadow:0 0 0 6px #d7fa6122}
+h1{font-weight:900;line-height:1.02;letter-spacing:-.06em}
+h1 .o{color:transparent;-webkit-text-stroke:2.5px var(--ink)}
+.crop{display:block;aspect-ratio:1033/211;overflow:hidden;position:relative;background:#000;border:2px solid #59654a;box-shadow:0 30px 60px #000c}
+.crop img{position:absolute;width:116.75%;height:auto;left:-7.75%;top:-126.07%}
+.crop.back img{top:-9.48%}
+.sticker{position:absolute;border-radius:50%;background:var(--lime);color:#14180c;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;font-weight:900;line-height:1.02;letter-spacing:-.03em;transform:rotate(12deg);box-shadow:0 14px 30px #0009}
+.info{display:grid;gap:0;border-top:2px solid #3c4331}
+.info div{display:flex;justify-content:space-between;align-items:baseline;gap:20px;border-bottom:2px solid #2c3126}
+.info dt{color:var(--muted);font-weight:500}
+.info dd{font-weight:700;text-align:right}
+.info dd em{font-style:normal;color:var(--lime)}
+.cta{display:flex;align-items:center;justify-content:space-between;background:var(--lime);color:#161714;font-weight:900;border-radius:6px}
+.cta small{display:block;font-weight:700;opacity:.7}
+.foot{color:#8e9783;font-weight:500}
+.ticker{position:absolute;left:0;right:0;background:var(--lime);color:#161714;font-weight:900;white-space:nowrap;overflow:hidden;letter-spacing:.04em}
+
+/* 공통: 위에서 아래로 쌓는다(겹침 방지) */
+.feed,.story,.x{display:flex;flex-direction:column}
+.art{position:relative;flex-shrink:0}
+.art .crop{position:absolute}
+.cta{flex-shrink:0}
+.dance{font-weight:700;color:var(--lime)}
+
+/* ---------- 인스타 피드 1080x1350 ---------- */
+.feed{width:1080px;height:1350px;padding:70px 80px 56px}
+.feed .kicker{font-size:28px}
+.feed h1{font-size:122px;margin-top:26px}
+.feed .art{position:absolute;right:-30px;top:150px;width:600px;height:330px}
+.feed .art .crop{width:560px}
+.feed .art .back{right:20px;top:20px;transform:rotate(-12deg)}
+.feed .art .front{right:50px;top:170px;transform:rotate(5deg)}
+.feed .sticker{width:130px;height:130px;font-size:26px;right:30px;top:-40px}
+.feed .dance{font-size:28px;margin-top:34px}
+.feed .info{margin-top:30px}
+.feed .info div{padding:17px 0}
+.feed .info dt{font-size:26px}.feed .info dd{font-size:29px}
+.feed .cta{margin-top:auto;padding:26px 34px;font-size:34px}
+.feed .cta small{font-size:21px;margin-bottom:4px}
+.feed .cta span:last-child{font-size:48px}
+.feed .foot{margin-top:20px;font-size:20px}
+
+/* ---------- 인스타 스토리 1080x1920 ---------- */
+.story{width:1080px;height:1920px;padding:130px 90px 100px}
+.story .kicker{font-size:32px}
+.story h1{font-size:158px;margin-top:30px}
+.story .art{height:430px;margin:70px -90px 0}
+.story .art .crop{width:800px}
+.story .art .back{left:60px;top:30px;transform:rotate(-8deg)}
+.story .art .front{left:170px;top:210px;transform:rotate(5deg)}
+.story .sticker{width:160px;height:160px;font-size:32px;right:60px;top:-30px}
+.story .dance{font-size:34px;margin-top:36px}
+.story .info{margin-top:34px}
+.story .info div{padding:19px 0}
+.story .info dt{font-size:30px}.story .info dd{font-size:34px}
+.story .cta{margin-top:auto;padding:34px 40px;font-size:40px}
+.story .cta small{font-size:24px;margin-bottom:6px}
+.story .cta span:last-child{font-size:58px}
+.story .foot{margin-top:24px;font-size:23px}
+
+/* ---------- X 1600x900 ---------- */
+.x{width:1600px;height:900px;padding:70px 90px 50px;display:grid;grid-template-columns:640px 1fr;grid-template-rows:auto auto 1fr auto auto;column-gap:70px}
+.x .kicker{grid-column:1;grid-row:1;font-size:26px}
+.x h1{grid-column:1;grid-row:2;font-size:132px;margin-top:24px}
+.x .dance{grid-column:1;grid-row:3;align-self:start;font-size:27px;margin-top:26px}
+.x .cta{grid-column:1;grid-row:4;padding:22px 28px;font-size:29px}
+.x .cta small{font-size:18px;margin-bottom:3px}
+.x .cta span:last-child{font-size:42px}
+.x .foot{grid-column:1 / 3;grid-row:5;margin-top:18px;font-size:19px}
+.x .art{grid-column:2;grid-row:1 / 3;height:420px;margin-right:-90px}
+.x .art .crop{width:720px}
+.x .art .back{left:40px;top:40px;transform:rotate(-10deg)}
+.x .art .front{left:10px;top:220px;transform:rotate(5deg)}
+.x .sticker{width:140px;height:140px;font-size:28px;right:80px;top:0}
+.x .info{grid-column:2;grid-row:3 / 5;align-self:end}
+.x .info div{padding:14px 0}
+.x .info dt{font-size:23px}.x .info dd{font-size:26px}
+</style></head><body>
+<template id="star"><svg class="star" viewBox="0 0 24 24"><path d="M12 1.5v21M1.5 12h21M4.6 4.6l14.8 14.8M19.4 4.6 4.6 19.4"/></svg></template>
+<div id="root"></div>
+<script>
+const IMG = '../../dist/assets/slogan.png';
+const star = document.getElementById('star').innerHTML;
+const title = `<h1>춤은<br>불법이${star}<br><span class="o">아니다.</span></h1>`;
+const art = `<div class="art"><span class="crop back"><img src="${IMG}"></span><span class="crop front"><img src="${IMG}"></span><div class="sticker">LET’S<br>DANCE!</div></div>`;
+const info = `<dl class="info">
+  <div><dt>개당 가격</dt><dd>5,300원 <em>(원가)</em></dd></div>
+  <div><dt>주문 마감</dt><dd>10/13(화) 22:00</dd></div>
+  <div><dt>현장 수령</dt><dd>경기인디뮤직페스티벌 10/17·10/18</dd></div>
+  <div><dt>진행 조건</dt><dd>총 <em>50개</em> 이상 모이면 제작</dd></div>
+</dl>`;
+const cta = `<div class="cta"><span><small>카카오 로그인 후 주문</small>슬로건 공동구매</span><span>↗</span></div>`;
+const url = 'dance-is-not-a-crime.b201.kr';
+const foot = `<p class="foot">${url} · 현장 수령 전용(택배 없음) · 온라인 판매는 원작자 내향인 기수님이 별도 기획 중</p>`;
+const v = new URLSearchParams(location.search).get('v') || 'feed';
+const kicker = `<p class="kicker"><i></i>슬로건 공동구매 · 페스티벌 현장 수령</p>`;
+document.getElementById('root').innerHTML =
+  `<div class="c ${v}">${kicker}${title}${art}<p class="dance">♪ 음악을 틀고 같이 춤을 춰요!</p>${info}${cta.replace('슬로건 공동구매', url)}${foot.replace(url + ' · ', '')}</div>`;
+</script></body></html>
