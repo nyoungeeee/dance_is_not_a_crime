@@ -381,3 +381,17 @@ dialog::backdrop{background:#000b}
 /* 로그인 창 개인정보 안내 */
 .modal-shell .privacy-note{display:flex;align-items:flex-start;gap:9px;margin:4px 0 0;padding:11px 13px;border:1px solid #3a4130;border-radius:4px;background:#1b1e17;font-size:11px!important;line-height:1.6;color:#b9c2a9!important;text-align:left}
 .privacy-note svg{width:15px;height:15px;flex-shrink:0;margin-top:2px;fill:none;stroke:var(--lime);stroke-width:1.8}
+
+/* 공동구매 진행 조건·오프라인 안내 */
+.group-buy-notice{display:flex;flex-direction:column;gap:10px;margin:0 0 22px;padding:14px 16px;border:1px solid #4a5638;border-left:3px solid var(--lime);border-radius:4px;background:#1d2117}
+.group-buy-notice p{margin:0;font-size:12px;line-height:1.7;color:#c9d0bb}
+.group-buy-notice strong{display:block;font-size:13px;color:var(--ink);margin-bottom:2px}
+.price-note{font-size:.8em;color:#a9b39a;font-weight:400}
+/* 메인 이미지: 음악 재생 안내 */
+.dance-prompt{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin:12px 0 0;padding:11px 14px;border:1px dashed #6b7a4c;border-radius:999px;background:#1f2418;color:var(--lime);font-size:13px;font-weight:700;cursor:pointer;transition:background .15s ease,border-color .15s ease}
+.dance-prompt:hover{background:#28301d;border-color:var(--lime)}
+.dance-prompt-icon{display:inline-block;font-size:16px}
+.dance-prompt.is-playing .dance-prompt-icon{animation:dance-note .6s ease-in-out infinite alternate}
+@keyframes dance-note{to{transform:translateY(-3px) rotate(-12deg)}}
+@media(prefers-reduced-motion:reduce){.dance-prompt.is-playing .dance-prompt-icon{animation:none}}
+@media(max-width:700px){.dance-prompt{font-size:12px;padding:10px 12px}}

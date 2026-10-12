@@ -1,6 +1,6 @@
 import {validateMessage} from './messages.mjs?v=24';
 import {EVENTS, validateNickname, validateOrder, pickupDateLabel} from './account-state.mjs?v=14';
-import {GROUP_BUY, ordersOpen, ORDER_STATUS, paymentWindowOpen, parseQuantity, orderAmount, getOrderCountdown} from './group-buy.mjs?v=14';
+import {GROUP_BUY, ordersOpen, ORDER_STATUS, paymentWindowOpen, parseQuantity, orderAmount, getOrderCountdown} from './group-buy.mjs?v=15';
 import {api} from './api.mjs?v=2';
 const $ = selector => document.querySelector(selector);
 const modal = $('#modal'), content = $('#modal-content'), form = $('#order-form');
@@ -447,6 +447,12 @@ document.addEventListener('click', event => {
         try {const {order} = await api('POST',`/api/orders/${encodeURIComponent(id)}/cancel`);replaceOrder(order);if(editingId === id) showPanel('list',{focus:false});refresh();await orderDetail(id);toast(order.status === 'cancelled' ? '주문을 취소했어요.' : '취소를 요청했어요. 운영자가 확인 후 처리해요.');}
         catch(error) {toast(error.message);await loadMe();}
       });break;
+    case 'play-music': {
+      // 하단 음악 플레이어를 켠다. 이미 재생 중이면 그대로 둔다.
+      const toggle = $('#music-toggle');
+      if(toggle?.getAttribute('aria-pressed') !== 'true') toggle?.click();
+      break;
+    }
     case 'close': closeModal();break;
     case 'design': openModal(`<div class="modal-label">슬로건 디자인</div><h2 id="modal-title">춤은 불법이 아니다</h2><div class="design-gallery"><div class="towel-crop back"><img src="/assets/slogan.png" alt="춤추는 해골 패턴 면"></div><div class="towel-crop front"><img src="/assets/slogan.png" alt="춤은 불법이 아니다 문구 면"></div></div><p>소재·크기·인쇄 사양은 제작 조건 확인 후 안내할 예정이에요.</p>`, {wide:true});break;
     case 'share': share();break;
@@ -466,6 +472,8 @@ function updateCountdown(now = new Date()) {
 }
 updateCountdown();
 setInterval(() => updateCountdown(),1000);
+// 음악이 재생 중이면 메인 이미지의 안내 음표가 같이 움직인다.
+new MutationObserver(() => $('.dance-prompt')?.classList.toggle('is-playing', $('#music-toggle').getAttribute('aria-pressed') === 'true')).observe($('#music-toggle'), {attributes:true, attributeFilter:['aria-pressed']});
 refresh();
 loadMe().then(() => {
   booted = true;

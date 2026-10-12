@@ -139,7 +139,7 @@ test('여러 건 주문: 제출·중복 제출 방지·수정·입금 확인 요
   assert.equal(r.body.created, true);
   const first = r.body.order;
   assert.match(first.id, /^DNC-[0-9A-F]{8}$/);
-  assert.equal(first.totalAmount, 15000);
+  assert.equal(first.totalAmount, 15900);
   assert.equal(first.status, 'payment_pending');
 
   // 같은 주문서를 두 번 제출(연타·재전송)해도 주문은 하나
@@ -157,7 +157,7 @@ test('여러 건 주문: 제출·중복 제출 방지·수정·입금 확인 요
 
   // 주문별 수정
   r = await c.json('PUT', `/api/orders/${first.id}`, { ...ORDER, quantity: 5 });
-  assert.equal(r.body.order.totalAmount, 25000);
+  assert.equal(r.body.order.totalAmount, 26500);
   assert.equal((await c.json('GET', '/api/orders')).body.orders.find((o: any) => o.id === second.id).quantity, 1);
 
   r = await c.json('POST', `/api/orders/${first.id}/payment-request`);
@@ -263,7 +263,7 @@ test('운영자 상태 변경: 기록이 남고, 입금 확정 후 사용자는 
   const admin = new Client();
   await admin.login('9999');
   assert.equal((await admin.json('POST', `/api/admin/orders/${first.id}/status`, { status: 'nope' })).status, 400);
-  let r = await admin.json('POST', `/api/admin/orders/${first.id}/status`, { status: 'paid', note: '15,000원 입금 확인' });
+  let r = await admin.json('POST', `/api/admin/orders/${first.id}/status`, { status: 'paid', note: '15,900원 입금 확인' });
   assert.equal(r.body.order.status, 'paid');
   assert.equal((await user.json('GET', '/api/me')).body.orders[0].status, 'paid');
   assert.equal((await user.json('PUT', `/api/orders/${first.id}`, ORDER)).status, 409);
@@ -274,7 +274,7 @@ test('운영자 상태 변경: 기록이 남고, 입금 확정 후 사용자는 
   const all = (await admin.json('GET', '/api/admin/orders')).body.orders;
   const logged = all.find((o: any) => o.id === first.id);
   assert.deepEqual(logged.logs.map((l: any) => `${l.actor}:${l.toStatus}`), ['user:payment_pending', 'admin:paid', 'admin:refunded']);
-  assert.equal(logged.logs[1].note, '15,000원 입금 확인');
+  assert.equal(logged.logs[1].note, '15,900원 입금 확인');
 });
 
 test('탈퇴: 세션 무효, 대화 삭제, 주문 기록은 비식별로 남고 같은 카카오로 다시 가입하면 새 계정', async () => {

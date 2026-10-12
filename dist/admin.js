@@ -1,6 +1,6 @@
 import {api} from './api.mjs?v=2';
 import {EVENTS, pickupDateLabel} from './account-state.mjs?v=14';
-import {ORDER_STATUS} from './group-buy.mjs?v=14';
+import {GROUP_BUY, ORDER_STATUS} from './group-buy.mjs?v=15';
 // 운영자 화면. 권한은 서버가 검사한다(ADMIN_KAKAO_IDS). 이 파일은 공개돼도 데이터는 운영자에게만 내려온다.
 const $ = s => document.querySelector(s);
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -30,7 +30,7 @@ function renderSummary() {
     ['입금 확인 요청', `${count('verification_requested')}건`],
     ['입금 대기', `${count('payment_pending')}건`],
     ['취소 확인 요청', `${count('cancel_requested')}건`],
-    ['진행 중 주문 수량', `${live.reduce((a, o) => a + o.quantity, 0)}개`],
+    ['진행 중 주문 수량 (최소 50개)', `${live.reduce((a, o) => a + o.quantity, 0)}개 / ${GROUP_BUY.minTotalQuantity}개`],
     ['입금 확인 완료', `${paid.length}건 · ${paid.reduce((a, o) => a + o.quantity, 0)}개 · ${won(paid.reduce((a, o) => a + o.totalAmount, 0))}`],
     ...Object.entries(byDate).map(([k, q]) => [`수령 ${k}`, `${q}개`]),
   ].map(([k, v]) => `<div><span>${esc(k)}</span><strong>${esc(v)}</strong></div>`).join('');

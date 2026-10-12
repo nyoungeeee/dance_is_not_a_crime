@@ -4,7 +4,7 @@ import { fail } from './errors';
 export const GROUP_BUY = {
   ordersCloseAt: new Date('2026-10-13T22:00:00+09:00'),
   paymentDeadline: new Date('2026-10-13T23:59:59.999+09:00'),
-  unitPrice: 5000,
+  unitPrice: 5300,
   minQuantity: 1,
   maxQuantity: 20,
 } as const;

@@ -3,7 +3,9 @@ export const GROUP_BUY = Object.freeze({
   ordersCloseLabel: '10/13(화) 22:00',
   supplierOrderLabel: '10/14(수) 오전',
   goodsArrivalLabel: '10/16(금) 예정',
-  unitPrice: 5000,
+  unitPrice: 5300,
+  // 공동구매 진행 조건: 전체 주문 수량이 이만큼 모이지 않으면 취소하고 전액 환불
+  minTotalQuantity: 50,
   minQuantity: 1,
   maxQuantity: 20,
   bankAccount: Object.freeze({bank: '토스뱅크', number: '1002-8046-9572', holder: '조현영'}),
