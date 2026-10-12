@@ -184,7 +184,7 @@ $('.modal-close').addEventListener('click', closeModal);
 function toast(message) {$('#toast').textContent = message;$('#toast').classList.add('visible');clearTimeout(toastTimer);toastTimer = setTimeout(() => $('#toast').classList.remove('visible'), 4000);}
 function loginPrompt(intent = 'login') {
   loginIntent = intent;
-  openModal(`<div class="modal-label">로그인</div><h2 id="modal-title">카카오로 로그인</h2><p>로그인 후 사용할 닉네임을 설정해요. 같은 계정으로 주문 내역과 입금 확인 상태를 확인할 수 있어요.</p><p class="auth-note">카카오에서는 회원번호만 받아요. 이름·전화번호·이메일은 받지 않아요.</p><a class="button kakao" href="/api/auth/kakao/login?intent=${encodeURIComponent(intent)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3C6.5 3 2 6.4 2 10.6c0 2.7 1.8 5 4.5 6.4l-.9 3.5 4-2.4c.8.1 1.6.2 2.4.2 5.5 0 10-3.5 10-7.7S17.5 3 12 3Z"/></svg>카카오로 계속하기</a>`);
+  openModal(`<div class="modal-label">로그인</div><h2 id="modal-title">카카오로 로그인</h2><p>로그인 후 사용할 닉네임을 설정해요. 같은 계정으로 주문 내역과 입금 확인 상태를 확인할 수 있어요.</p><p class="privacy-note"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8.5 10.5V7.5a3.5 3.5 0 0 1 7 0v3"/></svg><span>카카오에서는 회원번호만 받아요. 이름·전화번호·이메일은 받지 않아요.</span></p><a class="button kakao" href="/api/auth/kakao/login?intent=${encodeURIComponent(intent)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3C6.5 3 2 6.4 2 10.6c0 2.7 1.8 5 4.5 6.4l-.9 3.5 4-2.4c.8.1 1.6.2 2.4.2 5.5 0 10-3.5 10-7.7S17.5 3 12 3Z"/></svg>카카오로 계속하기</a>`);
 }
 function continueIntent(intent) {
   if(intent === 'order') showPanel(me.orders.length ? 'list' : 'new');

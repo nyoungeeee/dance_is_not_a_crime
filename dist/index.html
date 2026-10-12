@@ -9,13 +9,13 @@
   <meta property="og:image" content="https://dance-is-not-a-crime.b201.kr/assets/slogan.png">
   <title>춤은 불법이 아니다 | 슬로건 공동구매</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%23161616'/%3E%3Ctext x='32' y='48' text-anchor='middle' font-size='49' fill='%23d7fa61'%3E✳︎%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/styles.css?v=35"><script type="module" src="/app.js?v=32"></script><script type="module" src="/music.js?v=26"></script>
+  <link rel="stylesheet" href="/styles.css?v=36"><script type="module" src="/app.js?v=33"></script><script type="module" src="/music.js?v=26"></script>
 </head>
 <body>
   <div class="header-region">
   <header class="header wrap">
     <a href="#" class="brand" aria-label="춤은 불법이 아니다 홈"><span class="brand-star" aria-hidden="true"><svg class="star-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1.5v21M1.5 12h21M4.6 4.6l14.8 14.8M19.4 4.6 4.6 19.4" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="butt"/></svg></span><span>춤은 불법이 아니다<small>DANCE IS NOT A CRIME</small></span></a>
-    <nav aria-label="주요 메뉴"><a href="#participate">주문</a><a href="#how">공동구매 안내</a></nav>
+    <nav aria-label="주요 메뉴"><a href="#participate">주문</a><a href="#how">공동구매 안내</a><button type="button" class="nav-link" data-action="message">문의<span class="inquiry-badge" data-inquiry-count hidden></span></button></nav>
     <div class="account" id="account-area">
       <span class="account-loading" id="account-loading" role="status"><span class="spinner" aria-hidden="true"></span><span class="sr-only">계정 정보를 불러오는 중</span></span>
       <button class="login-button" id="header-login" data-action="login" hidden>카카오 로그인</button>
@@ -35,7 +35,6 @@
     <div class="hero-region">
     <section class="hero wrap" aria-labelledby="hero-title">
       <div class="hero-copy">
-        <p class="eyebrow"><span class="live-dot" aria-hidden="true"></span>슬로건 공동구매</p>
         <h1 id="hero-title">춤은<br><span class="title-line">불법이<span class="title-star" aria-hidden="true"><svg class="star-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1.5v21M1.5 12h21M4.6 4.6l14.8 14.8M19.4 4.6 4.6 19.4" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="butt"/></svg></span></span><br><span class="outline-word">아니다.</span></h1>
         <p class="hero-description">경기인디뮤직페스티벌 현장 수령<br><span class="hero-coming">세종보헤미안뮤직페스티벌 (추후 오픈 예정)</span></p>
         <section class="order-countdown" id="order-countdown" aria-label="주문 마감 카운트다운">
@@ -95,7 +94,7 @@
   </main>
   <footer class="footer wrap"><p>춤은 불법이 아니다 · 슬로건 공동구매</p><button class="text-button" data-action="about">이용 안내</button></footer>
   <div class="mobile-cta"><div class="music-player" aria-label="음악 플레이어"><div class="music-controls"><button type="button" id="music-prev" aria-label="이전 곡"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h2v14H5zM19 5v14L8 12z"/></svg></button><button type="button" id="music-toggle" aria-label="음악 재생" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path id="music-toggle-icon" d="M7 5l12 7-12 7z"/></svg></button><button type="button" id="music-next" aria-label="다음 곡"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 5h2v14h-2zM5 5l11 7-11 7z"/></svg></button><span class="music-time" id="music-time" aria-label="재생 시간">0:00 / 2:18</span></div><div class="music-info"><span class="music-title" id="music-title">Uptown Jam</span><span class="music-artist" id="music-artist">Nick Petrov</span></div><span id="music-status" class="sr-only" role="status"></span><audio id="music-audio" preload="auto"></audio></div><a href="#participate">주문서 작성</a></div>
-  <button type="button" class="inquiry-launcher" data-action="message" aria-label="운영자에게 문의"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v12H9l-5 4V4Z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg><span>문의</span><span class="inquiry-badge" data-inquiry-count hidden></span></button>
+  <button type="button" class="inquiry-launcher" data-action="message" aria-label="운영자에게 문의"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4.5h16v11.5H9.5L4 20.5V4.5Z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/><path d="M8.5 9.5h7M8.5 12.5h4.5" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg><span class="inquiry-launcher-label">문의</span><span class="inquiry-badge" data-inquiry-count hidden></span></button>
   <dialog id="modal" aria-labelledby="modal-title" closedby="closerequest"><div class="modal-shell"><button class="modal-close" aria-label="닫기">×</button><div id="modal-content"></div></div></dialog>
   <div id="toast" role="status" aria-live="polite"></div>
 </body>
