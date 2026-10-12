@@ -1,4 +1,4 @@
-import {api} from './api.mjs?v=1';
+import {api} from './api.mjs?v=2';
 import {EVENTS, pickupDateLabel} from './account-state.mjs?v=13';
 import {ORDER_STATUS} from './group-buy.mjs?v=13';
 // 운영자 화면. 권한은 서버가 검사한다(ADMIN_KAKAO_IDS). 이 파일은 공개돼도 데이터는 운영자에게만 내려온다.
@@ -7,6 +7,15 @@ const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const won = n => `${Number(n).toLocaleString('ko-KR')}원`;
 const time = iso => new Date(iso).toLocaleString('ko-KR',{timeZone:'Asia/Seoul',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
 let orders = [], threads = [], currentThread = null, toastTimer;
+/** 요청 중 버튼에 스피너를 띄우고 막는다. */
+async function busy(btn, task) {
+  if (btn.disabled) return;
+  btn.disabled = true;
+  const sp = Object.assign(document.createElement('span'), {className:'spinner'});
+  btn.prepend(sp);
+  try {return await task();}
+  finally {sp.remove();if (btn.isConnected) btn.disabled = false;}
+}
 function toast(m) {$('#toast').textContent = m;$('#toast').classList.add('visible');clearTimeout(toastTimer);toastTimer = setTimeout(() => $('#toast').classList.remove('visible'), 3500);}
 
 for (const [value, label] of Object.entries(ORDER_STATUS)) $('#status-filter').insertAdjacentHTML('beforeend', `<option value="${value}">${label}</option>`);
@@ -50,9 +59,10 @@ $('#order-rows').addEventListener('click', async e => {
   const order = orders.find(o => o.id === id);
   if (status === order.status && !note) {toast('바뀐 내용이 없어요.');return;}
   if (!confirm(`${id} (${order.payerName}, ${won(order.totalAmount)})\n${ORDER_STATUS[order.status]} → ${ORDER_STATUS[status]}\n저장할까요?`)) return;
-  btn.disabled = true;
-  try {await api('POST', `/api/admin/orders/${encodeURIComponent(id)}/status`, {status, note});await loadOrders();toast('저장했어요.');}
-  catch (err) {toast(err.message);btn.disabled = false;}
+  await busy(btn, async () => {
+    try {await api('POST', `/api/admin/orders/${encodeURIComponent(id)}/status`, {status, note});await loadOrders();toast('저장했어요.');}
+    catch (err) {toast(err.message);}
+  });
 });
 $('#csv').addEventListener('click', () => {
   const head = ['주문번호','닉네임','입금자명','수량','금액','행사','수령일','상태','접수시각','수정시각'];
@@ -81,9 +91,10 @@ $('#thread-view').addEventListener('submit', async e => {
   e.preventDefault();
   const ta = e.target.querySelector('textarea'), btn = e.target.querySelector('button');
   if ([...ta.value.trim()].length > 500) {toast('500자 이내로 입력해주세요.');return;}
-  btn.disabled = true;
-  try {await api('POST', `/api/admin/threads/${currentThread}`, {text:ta.value});await openThread(currentThread);}
-  catch (err) {toast(err.message);btn.disabled = false;}
+  await busy(btn, async () => {
+    try {await api('POST', `/api/admin/threads/${currentThread}`, {text:ta.value});await openThread(currentThread);}
+    catch (err) {toast(err.message);}
+  });
 });
 
 document.querySelectorAll('[data-tab]').forEach(t => t.addEventListener('click', () => {

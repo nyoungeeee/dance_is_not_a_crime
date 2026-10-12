@@ -9,7 +9,7 @@
   <meta property="og:image" content="https://dance-is-not-a-crime.b201.kr/assets/slogan.png">
   <title>춤은 불법이 아니다 | 슬로건 공동구매</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%23161616'/%3E%3Ctext x='32' y='48' text-anchor='middle' font-size='49' fill='%23d7fa61'%3E✳︎%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/styles.css?v=32"><script type="module" src="/app.js?v=28"></script><script type="module" src="/music.js?v=26"></script>
+  <link rel="stylesheet" href="/styles.css?v=33"><script type="module" src="/app.js?v=29"></script><script type="module" src="/music.js?v=26"></script>
 </head>
 <body>
   <div class="header-region">
@@ -17,7 +17,8 @@
     <a href="#" class="brand" aria-label="춤은 불법이 아니다 홈"><span class="brand-star" aria-hidden="true"><svg class="star-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1.5v21M1.5 12h21M4.6 4.6l14.8 14.8M19.4 4.6 4.6 19.4" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="butt"/></svg></span><span>춤은 불법이 아니다<small>DANCE IS NOT A CRIME</small></span></a>
     <nav aria-label="주요 메뉴"><a href="#participate">주문</a><a href="#how">공동구매 안내</a></nav>
     <div class="account" id="account-area">
-      <button class="login-button" id="header-login" data-action="login">카카오 로그인</button>
+      <span class="account-loading" id="account-loading" role="status"><span class="spinner" aria-hidden="true"></span><span class="sr-only">계정 정보를 불러오는 중</span></span>
+      <button class="login-button" id="header-login" data-action="login" hidden>카카오 로그인</button>
       <button class="account-button" id="account-button" aria-expanded="false" aria-controls="account-menu" hidden><span id="header-nickname"></span><span class="chevron" aria-hidden="true"></span></button>
       <div class="account-menu" id="account-menu" aria-label="계정 메뉴" hidden>
         <p><span id="menu-nickname"></span><small>카카오 계정</small></p>
@@ -68,13 +69,14 @@
         <p class="small-note">주문서 작성만으로 주문이 확정되지는 않아요.</p>
       </div>
       <div class="survey-form-panel">
+        <div class="loading-block" id="panel-loading" role="status"><span class="spinner" aria-hidden="true"></span>주문 정보를 불러오는 중이에요</div>
         <div id="order-list-panel" class="order-list-panel" hidden>
           <div class="form-heading"><h3>접수된 주문</h3><p id="order-list-status"></p></div>
           <ul class="order-cards" id="order-cards"></ul>
           <button type="button" class="button primary add-order" id="add-order" data-action="new-order"><span aria-hidden="true">+</span> 추가로 주문하기</button>
           <p class="auth-note" id="order-list-note">주문마다 입금 안내가 따로 나와요. 각 주문 금액을 입금하고 입금 확인을 요청해주세요.</p>
         </div>
-        <form id="order-form">
+        <form id="order-form" hidden>
           <div class="form-heading"><button type="button" class="text-button back-to-list" id="back-to-list" data-action="show-list" hidden>← 접수된 주문 보기</button><h3 id="form-title">주문서 작성</h3><p id="profile-status">카카오 로그인 후 닉네임을 설정해주세요.</p></div>
           <fieldset class="field"><legend>주문 수량 <span class="required">필수</span></legend><div class="quantity-row"><span>슬로건</span><div class="stepper"><button type="button" id="minus" aria-label="수량 줄이기">−</button><input id="quantity" name="quantity" type="number" inputmode="numeric" min="1" max="20" step="1" value="1" required autocomplete="off" aria-label="주문 수량"><button type="button" id="plus" aria-label="수량 늘리기">+</button></div><span>개</span></div><p class="field-hint">1~20개까지 직접 입력할 수 있어요. 1개당 5,000원입니다.</p></fieldset>
           <fieldset class="field"><legend>수령 행사 <span class="required">필수</span></legend><div class="event-options"><label><input type="radio" name="event" value="inmufe" required><span><strong>경기인디뮤직페스티벌</strong><small>10/17(토) · 10/18(일)</small></span></label><label class="event-coming" aria-disabled="true"><input type="radio" name="event" value="sejong" disabled><span><span class="event-name-row"><strong>세종보헤미안뮤직페스티벌</strong><em class="coming-soon">(추후 오픈 예정)</em></span><small>10/30(금) · 10/31(토) · 11/1(일)</small></span></label></div><p class="field-hint">선택한 행사에서 직접 수령해주세요. 택배는 제공하지 않아요.</p></fieldset>

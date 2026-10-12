@@ -5,8 +5,9 @@ export class ApiError extends Error {
 export async function api(method, url, body) {
   let res;
   try {
-    res = await fetch(url, {method, credentials:'same-origin', headers:{'x-dance':'1', ...(body === undefined ? {} : {'content-type':'application/json'})}, body:body === undefined ? undefined : JSON.stringify(body)});
-  } catch {
+    res = await fetch(url, {method, credentials:'same-origin', signal:AbortSignal.timeout(15000), headers:{'x-dance':'1', ...(body === undefined ? {} : {'content-type':'application/json'})}, body:body === undefined ? undefined : JSON.stringify(body)});
+  } catch (error) {
+    if (error?.name === 'TimeoutError') throw new ApiError(0, 'TIMEOUT', '응답이 늦어요. 잠시 후 다시 시도해주세요.');
     throw new ApiError(0, 'NETWORK', '인터넷 연결을 확인하고 다시 시도해주세요.');
   }
   const data = await res.json().catch(() => ({}));

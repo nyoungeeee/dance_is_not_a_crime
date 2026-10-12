@@ -1,7 +1,7 @@
 import {validateMessage} from './messages.mjs?v=24';
 import {EVENTS, validateNickname, validateOrder, pickupDateLabel} from './account-state.mjs?v=13';
 import {GROUP_BUY, ordersOpen, ORDER_STATUS, paymentWindowOpen, parseQuantity, orderAmount, getOrderCountdown} from './group-buy.mjs?v=13';
-import {api} from './api.mjs?v=1';
+import {api} from './api.mjs?v=2';
 const $ = selector => document.querySelector(selector);
 const modal = $('#modal'), content = $('#modal-content'), form = $('#order-form');
 // 계정·내 주문(최신순)·새 답변 수는 서버(/api/me)가 기준. 화면은 받은 값을 보여주기만 한다.
@@ -25,12 +25,26 @@ async function loadMe() {
   refresh();
   return me;
 }
-/** 버튼을 잠시 막아 두 번 눌러 중복 요청이 가지 않게 한다. */
+/** 요청 중에는 버튼을 막고(중복 요청 방지) 스피너를 띄워 기다리는 중임을 알린다. */
 async function busy(button, task) {
   if(button?.disabled) return;
-  if(button) button.disabled = true;
+  let spinner;
+  if(button) {
+    button.disabled = true;button.classList.add('is-loading');button.setAttribute('aria-busy','true');
+    spinner = document.createElement('span');spinner.className = 'spinner';spinner.setAttribute('aria-hidden','true');
+    button.prepend(spinner);
+  }
   try {return await task();}
-  finally {if(button?.isConnected) button.disabled = false;}
+  finally {
+    spinner?.remove();
+    if(button) {button.classList.remove('is-loading');button.removeAttribute('aria-busy');if(button.isConnected) button.disabled = false;}
+  }
+}
+/** 서버 응답이 0.25초 넘게 걸리면 창에 "불러오는 중"을 먼저 띄운다(빠르면 깜빡임 없이 바로 결과). */
+async function withLoading(label, task) {
+  const timer = setTimeout(() => openModal(`<div class="modal-label">${label}</div><div class="loading-block" role="status"><span class="spinner" aria-hidden="true"></span>불러오는 중이에요</div>`), 250);
+  try {return await task();}
+  finally {clearTimeout(timer);}
 }
 function replaceOrder(order) {
   const index = me.orders.findIndex(o => o.id === order.id);
@@ -49,9 +63,12 @@ function orderCard(order) {
   const pending = order.status === 'payment_pending';
   return `<li class="order-card ${CLOSED.includes(order.status) && order.status !== 'picked_up' ? 'is-closed' : ''}"><div class="order-card-top"><strong>${escapeHTML(order.id)}</strong><span class="order-badge s-${order.status}">${ORDER_STATUS[order.status] ?? ''}</span></div><p>슬로건 ${order.quantity}개 · ${won(order.totalAmount)}</p><p class="order-card-sub">${EVENTS[order.event]?.name ?? ''} ${pickupDateLabel(order.event,order.pickupDate)} · 입금자명 ${escapeHTML(order.payerName)}</p><div class="order-card-actions"><button type="button" class="text-button" data-action="order-detail" data-id="${escapeHTML(order.id)}">자세히</button>${pending ? `<button type="button" class="text-button" data-action="order" data-id="${escapeHTML(order.id)}">입금 안내</button>` : ''}</div></li>`;
 }
+let booted = false;
 function refresh() {
   const on = signedIn();
-  $('#header-login').hidden = on;
+  $('#account-loading').hidden = booted;
+  $('#panel-loading').hidden = booted;
+  $('#header-login').hidden = on || !booted;
   $('#account-button').hidden = !on;
   $('#header-nickname').textContent = on ? nickname() : '';
   $('#menu-nickname').textContent = on ? nickname() : '';
@@ -61,8 +78,8 @@ function refresh() {
   if(!hasOrders) {panelMode = 'new';editingId = null;}
   else if(panelMode === 'new' && !open) panelMode = 'list';
   const showList = hasOrders && panelMode === 'list';
-  $('#order-list-panel').hidden = !showList;
-  form.hidden = showList;
+  $('#order-list-panel').hidden = !booted || !showList;
+  form.hidden = !booted || showList;
   if(showList) {
     const pending = openOrders().filter(order => order.status === 'payment_pending');
     $('#order-list-status').textContent = pending.length ? `입금 대기 ${pending.length}건 · ${won(pending.reduce((sum, order) => sum + order.totalAmount, 0))}` : `${nickname()} 님의 주문 ${me.orders.length}건`;
@@ -247,13 +264,13 @@ form.addEventListener('submit', event => {
 /** 내 주문 전체(모달). 주문을 누르면 상세로 들어간다. */
 async function myOrders() {
   if(!signedIn()) {loginPrompt('my');return;}
-  await loadMe();
+  await withLoading('내 주문', loadMe);
   if(!me.orders.length) {openModal(`<div class="modal-label">내 주문</div><h2 id="modal-title">주문 내역이 없어요</h2><p>${escapeHTML(nickname())} 님, 주문 수량과 수령할 행사를 선택해주세요.</p>${ordersOpen() ? '<button class="button primary" data-action="new-order">주문서 작성</button>' : ''}`);return;}
   openModal(`<div class="modal-label">내 주문</div><h2 id="modal-title">주문 ${me.orders.length}건</h2><ul class="order-cards">${me.orders.map(orderCard).join('')}</ul>${ordersOpen() ? '<button class="button primary" data-action="new-order">+ 추가로 주문하기</button>' : ''}`);
 }
 async function orderDetail(id) {
   if(!signedIn()) {loginPrompt('my');return;}
-  await loadMe();
+  await withLoading('내 주문', loadMe);
   const order = findOrder(id);
   if(!order) {toast('주문을 찾을 수 없어요.');myOrders();return;}
   const closed = ['cancelled','refunded'].includes(order.status);
@@ -323,7 +340,7 @@ function refreshInquiryBadge() {
 }
 async function messages() {
   if(!signedIn()) {me.user ? nicknameForm(true) : loginPrompt('message');return;}
-  openModal(`<div class="modal-label">운영자에게 문의</div><h2 id="modal-title">문의 메시지</h2><p class="message-preview-note">운영자가 확인 후 이 대화에 답변해요. 실시간 상담은 아니에요.</p><div class="message-history" id="message-history" role="log" aria-live="polite" aria-label="문의 대화"><p class="message-empty">불러오는 중…</p></div><form id="message-form" class="message-compose"><label class="sr-only" for="message-input">문의 내용</label><textarea id="message-input" rows="3" maxlength="1000" placeholder="궁금한 점을 남겨주세요" aria-describedby="message-count message-error"></textarea><div class="message-compose-bottom"><span id="message-count">0 / 500</span><button type="submit" class="button lime" id="message-send">보내기</button></div><p id="message-error" class="field-error" role="alert"></p></form>`);
+  openModal(`<div class="modal-label">운영자에게 문의</div><h2 id="modal-title">문의 메시지</h2><p class="message-preview-note">운영자가 확인 후 이 대화에 답변해요. 실시간 상담은 아니에요.</p><div class="message-history" id="message-history" role="log" aria-live="polite" aria-label="문의 대화"><p class="message-empty loading-block" role="status"><span class="spinner" aria-hidden="true"></span>대화를 불러오는 중이에요</p></div><form id="message-form" class="message-compose"><label class="sr-only" for="message-input">문의 내용</label><textarea id="message-input" rows="3" maxlength="1000" placeholder="궁금한 점을 남겨주세요" aria-describedby="message-count message-error"></textarea><div class="message-compose-bottom"><span id="message-count">0 / 500</span><button type="submit" class="button lime" id="message-send">보내기</button></div><p id="message-error" class="field-error" role="alert"></p></form>`);
   modal.classList.add('modal-messages');
   const history = $('#message-history');
   let list = [];
@@ -439,6 +456,7 @@ updateCountdown();
 setInterval(() => updateCountdown(),1000);
 refresh();
 loadMe().then(() => {
+  booted = true;
   panelMode = me.orders.length ? 'list' : 'new';
   refresh();
   handleLoginReturn();

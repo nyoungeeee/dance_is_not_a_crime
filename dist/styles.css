@@ -349,3 +349,13 @@ dialog::backdrop{background:#000b}
 .add-order{width:100%;margin-top:14px}
 .back-to-list{display:block;margin:0 0 12px;font-size:11px;color:#b5c0a6}
 .modal-shell .order-cards{margin:18px 0}
+
+/* 불러오는 중 표시. 오류가 아니라 기다리는 중임을 알린다. */
+.spinner{display:inline-block;flex-shrink:0;width:1em;height:1em;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .7s linear infinite;vertical-align:-.15em}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.spinner{animation-duration:1.6s}}
+.is-loading{cursor:progress}
+.button.is-loading,.button.is-loading:disabled{opacity:.85}
+.loading-block{display:flex;align-items:center;justify-content:center;gap:10px;padding:40px 0;font-size:12px;color:#b5c0a6}
+.loading-block .spinner{width:20px;height:20px;color:var(--lime)}
+.account-loading{display:inline-flex;align-items:center;color:var(--lime);font-size:18px;padding:0 6px}
