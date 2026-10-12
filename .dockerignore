@@ -3,3 +3,9 @@
 *.md
 .env
 .env.*
+brand
+backups
+server/node_modules
+server/dist
+server/.data
+server/src/generated

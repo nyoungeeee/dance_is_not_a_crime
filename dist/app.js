@@ -1,13 +1,29 @@
-import {PreviewMessages, validateMessage} from './messages.mjs?v=23';
-import {PreviewAccount, EVENTS, validateNickname, pickupDateLabel} from './account-state.mjs?v=12';
-import {GROUP_BUY, ordersOpen, ORDER_STATUS, paymentWindowOpen, parseQuantity, orderAmount, getOrderCountdown} from './group-buy.mjs?v=12';
+import {validateMessage} from './messages.mjs?v=24';
+import {EVENTS, validateNickname, validateOrder, pickupDateLabel} from './account-state.mjs?v=13';
+import {GROUP_BUY, ordersOpen, ORDER_STATUS, paymentWindowOpen, parseQuantity, orderAmount, getOrderCountdown} from './group-buy.mjs?v=13';
+import {api} from './api.mjs?v=1';
 const $ = selector => document.querySelector(selector);
 const modal = $('#modal'), content = $('#modal-content'), form = $('#order-form');
-const account = new PreviewAccount({getItem:key=>localStorage.getItem(key),setItem:(key,value)=>localStorage.setItem(key,value),removeItem:key=>localStorage.removeItem(key)}, {getItem:key=>sessionStorage.getItem(key),setItem:(key,value)=>sessionStorage.setItem(key,value),removeItem:key=>sessionStorage.removeItem(key)});
-const inquiries = new PreviewMessages({getItem:key=>localStorage.getItem(key),setItem:(key,value)=>localStorage.setItem(key,value),removeItem:key=>localStorage.removeItem(key)});
-let quantity = 1, toastTimer, loginIntent = 'login';
+// 계정·주문·새 답변 수는 서버(/api/me)가 기준. 화면은 받은 값을 보여주기만 한다.
+let me = {user:null, order:null, unread:0};
+let quantity = 1, toastTimer, loginIntent = 'login', messagePoll;
 const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
-const nickname = () => account.signedIn ? account.profile?.nickname : null;
+const signedIn = () => !!me.user?.nickname;
+const nickname = () => me.user?.nickname ?? null;
+const activeOrder = () => me.order && !['cancelled','refunded'].includes(me.order.status) ? me.order : null;
+async function loadMe() {
+  try {me = await api('GET','/api/me');}
+  catch(error) {toast(error.message);}
+  refresh();
+  return me;
+}
+/** 버튼을 잠시 막아 두 번 눌러 중복 요청이 가지 않게 한다. */
+async function busy(button, task) {
+  if(button?.disabled) return;
+  if(button) button.disabled = true;
+  try {return await task();}
+  finally {if(button?.isConnected) button.disabled = false;}
+}
 function refreshQuantity() {
   const input = $('#quantity');
   if (document.activeElement !== input && quantity !== null) input.value = String(quantity);
@@ -18,20 +34,22 @@ function refreshQuantity() {
   $('#order-total').textContent = amount === null ? '수량을 입력해주세요' : `${amount.toLocaleString('ko-KR')}원`;
 }
 function refresh() {
-  const signedIn = account.signedIn && !!account.profile;
-  $('#header-login').hidden = signedIn;
-  $('#account-button').hidden = !signedIn;
-  $('#header-nickname').textContent = signedIn ? account.profile.nickname : '';
-  $('#menu-nickname').textContent = signedIn ? account.profile.nickname : '';
-  $('#profile-status').textContent = signedIn ? `${account.profile.nickname} 님의 주문 정보예요.` : '카카오 로그인 후 닉네임을 설정해주세요.';
-    const activeOrder = account.order && account.order.status !== 'cancelled';
-  const editable = ordersOpen() && (!activeOrder || account.order.status === 'payment_pending');
-  $('#submit-label').textContent = signedIn ? (editable ? (activeOrder ? '주문서 수정 · 미리보기' : '주문서 제출 · 미리보기') : activeOrder ? '내 주문 확인' : '주문 접수 마감') : ordersOpen() ? '카카오 로그인하고 주문서 작성' : '주문 접수 마감';
-  $('#submit-order').disabled = !ordersOpen() && !(signedIn && activeOrder);
-  $('#submit-order').classList.toggle('kakao', !signedIn);
-  $('#submit-order').classList.toggle('primary', signedIn);
-  $('#kakao-icon').hidden = signedIn;
-  $('#saved-notice').hidden = !(signedIn && activeOrder);
+  const on = signedIn();
+  $('#header-login').hidden = on;
+  $('#account-button').hidden = !on;
+  $('#header-nickname').textContent = on ? nickname() : '';
+  $('#menu-nickname').textContent = on ? nickname() : '';
+  $('#admin-menu-item').hidden = !(on && me.user.isAdmin);
+  $('#profile-status').textContent = on ? `${nickname()} 님의 주문 정보예요.` : '카카오 로그인 후 닉네임을 설정해주세요.';
+  const active = activeOrder();
+  const editable = ordersOpen() && (!active || active.status === 'payment_pending');
+  $('#submit-label').textContent = on ? (editable ? (active ? '주문서 수정' : '주문서 제출') : active ? '내 주문 확인' : '주문 접수 마감') : ordersOpen() ? '카카오 로그인하고 주문서 작성' : '주문 접수 마감';
+  $('#submit-order').disabled = !ordersOpen() && !(on && active);
+  $('#submit-order').classList.toggle('kakao', !on);
+  $('#submit-order').classList.toggle('primary', on);
+  $('#kakao-icon').hidden = on;
+  $('#saved-notice').hidden = !(on && active);
+  if(active) $('#saved-status').textContent = `${ORDER_STATUS[active.status]} · 주문번호 ${active.id}`;
   refreshQuantity();
   refreshInquiryBadge();
 }
@@ -57,10 +75,6 @@ function clearDraft() {
   form.reset(); quantity = 1;renderPickupDays(null);
   refreshQuantity();
 }
-if (account.signedIn && account.order?.status !== 'cancelled' && account.order) setDraft(account.order);
-else if(account.signedIn && account.survey) setDraft(account.survey);
-else {const legacy = account.legacyDraft();if (legacy) setDraft(legacy);}
-refresh();
 function changeQuantity(delta) {
   const current = parseQuantity($('#quantity').value) ?? GROUP_BUY.minQuantity;
   quantity = Math.max(GROUP_BUY.minQuantity, Math.min(GROUP_BUY.maxQuantity, current + delta));
@@ -79,7 +93,7 @@ function toggleMenu(open, {restoreFocus = false} = {}) {
 $('#account-button').addEventListener('click', () => toggleMenu($('#account-menu').hidden));
 // Keyboard navigation uses normal buttons and tab order; Escape restores focus.
 $('#account-menu').addEventListener('keydown', event => {
-  const buttons = [...$('#account-menu').querySelectorAll('button')];
+  const buttons = [...$('#account-menu').querySelectorAll('button:not([hidden])')];
   const index = buttons.indexOf(document.activeElement);
   if(event.key === 'ArrowDown' || event.key === 'ArrowUp') {event.preventDefault();buttons[(index + (event.key === 'ArrowDown' ? 1 : buttons.length - 1)) % buttons.length].focus();}
 });
@@ -88,6 +102,7 @@ $('#account-area').addEventListener('focusout', event => {if(!$('#account-area')
 document.addEventListener('keydown', event => {if(event.key === 'Escape' && !$('#account-menu').hidden) {event.preventDefault();toggleMenu(false,{restoreFocus:true});}});
 function openModal(html, {wide = false} = {}) {
   toggleMenu(false);
+  clearInterval(messagePoll);
   content.innerHTML = html;
   modal.classList.remove('modal-messages');
   modal.classList.toggle('modal-design', wide);
@@ -97,150 +112,184 @@ function openModal(html, {wide = false} = {}) {
   $('.modal-close').focus();
 }
 function closeModal() {modal.close();}
-modal.addEventListener('close', () => {if(modal.open) return;document.body.style.overflow = '';modal.classList.remove('modal-design','modal-messages');});
+modal.addEventListener('close', () => {if(modal.open) return;clearInterval(messagePoll);document.body.style.overflow = '';modal.classList.remove('modal-design','modal-messages');});
 $('.modal-close').addEventListener('click', closeModal);
 // No backdrop dismissal: dragging or selecting text must not close the dialog.
 function toast(message) {$('#toast').textContent = message;$('#toast').classList.add('visible');clearTimeout(toastTimer);toastTimer = setTimeout(() => $('#toast').classList.remove('visible'), 4000);}
 function goToForm() {closeModal();$('#participate').scrollIntoView({behavior:'smooth'});$('#submit-order').focus({preventScroll:true});}
-function loginPreview(intent = 'login') {
+function loginPrompt(intent = 'login') {
   loginIntent = intent;
-  openModal(`<div class="modal-label">로그인</div><h2 id="modal-title">카카오로 로그인</h2><p>로그인 후 사용할 닉네임을 설정해요. 같은 계정으로 주문 내역과 입금 확인 상태를 확인할 수 있어요.</p><p class="demo-notice">현재는 로그인 흐름의 미리보기예요. 카카오 계정 인증은 진행되지 않아요.</p><button class="button kakao" data-action="demo-auth">카카오 인증 다음 단계 체험</button>`);
+  openModal(`<div class="modal-label">로그인</div><h2 id="modal-title">카카오로 로그인</h2><p>로그인 후 사용할 닉네임을 설정해요. 같은 계정으로 주문 내역과 입금 확인 상태를 확인할 수 있어요.</p><p class="auth-note">카카오에서는 회원번호만 받아요. 이름·전화번호·이메일은 받지 않아요.</p><a class="button kakao" href="/api/auth/kakao/login?intent=${encodeURIComponent(intent)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3C6.5 3 2 6.4 2 10.6c0 2.7 1.8 5 4.5 6.4l-.9 3.5 4-2.4c.8.1 1.6.2 2.4.2 5.5 0 10-3.5 10-7.7S17.5 3 12 3Z"/></svg>카카오로 계속하기</a>`);
+}
+function continueIntent(intent) {
+  if(intent === 'order') {closeModal();if(activeOrder()) setDraft(activeOrder());$('#participate').scrollIntoView({behavior:'smooth'});$('#submit-order').focus({preventScroll:true});}
+  else if(intent === 'my') myOrder();
+  else if(intent === 'message') messages();
+  else if(intent === 'admin') location.href = '/admin';
 }
 function nicknameForm(isNew = false) {
-  if(!isNew && !account.signedIn) {loginPreview();return;}
-  openModal(`<div class="modal-label">${isNew ? '로그인 다음 단계' : '내 계정'}</div><h2 id="modal-title">${isNew ? '사용할 닉네임을 알려주세요' : '닉네임 수정'}</h2><p>주문 내역과 현장 수령 확인에 사용할 닉네임이에요.</p><form class="nickname-form" id="nickname-form"><label for="nickname-input">닉네임</label><input id="nickname-input" name="nickname" autocomplete="nickname" placeholder="닉네임 입력" required aria-describedby="nickname-hint nickname-error"><p class="field-hint" id="nickname-hint">2~20자 · 한글, 영문, 숫자, 공백, . _ - 사용 가능</p><p class="field-error" id="nickname-error" role="alert"></p><button class="button primary" type="submit">${isNew ? '닉네임 설정하고 시작하기' : '닉네임 저장'}</button></form><p class="auth-note">미리보기 닉네임은 이 브라우저에만 저장돼요.</p>`);
-  $('#nickname-input').value = account.profile?.nickname || '';
+  if(!me.user) {loginPrompt();return;}
+  openModal(`<div class="modal-label">${isNew ? '로그인 다음 단계' : '내 계정'}</div><h2 id="modal-title">${isNew ? '사용할 닉네임을 알려주세요' : '닉네임 수정'}</h2><p>주문 내역과 현장 수령 확인에 사용할 닉네임이에요.</p><form class="nickname-form" id="nickname-form"><label for="nickname-input">닉네임</label><input id="nickname-input" name="nickname" autocomplete="nickname" placeholder="닉네임 입력" required aria-describedby="nickname-hint nickname-error"><p class="field-hint" id="nickname-hint">2~20자 · 한글, 영문, 숫자, 공백, . _ - 사용 가능</p><p class="field-error" id="nickname-error" role="alert"></p><button class="button primary" type="submit" id="nickname-submit">${isNew ? '닉네임 설정하고 시작하기' : '닉네임 저장'}</button></form>`);
+  $('#nickname-input').value = me.user.nickname || '';
   $('#nickname-input').focus();
   $('#nickname-input').addEventListener('input', () => {$('#nickname-input').removeAttribute('aria-invalid');$('#nickname-error').textContent = '';});
   $('#nickname-form').addEventListener('submit', event => {
     event.preventDefault();
     const result = validateNickname($('#nickname-input').value);
     if(result.error) {$('#nickname-error').textContent = result.error;$('#nickname-input').setAttribute('aria-invalid','true');$('#nickname-input').focus();return;}
-    try {
-      const persisted = account.setNickname(result.nickname, {onboarding:isNew});
-      refresh();
-      const intent = loginIntent;
-      closeModal();
-      toast(persisted ? (isNew ? '닉네임을 설정했어요. 주문서를 작성할 수 있어요.' : '닉네임을 수정했어요.') : '브라우저 저장이 제한돼 닉네임은 이번 화면에만 적용돼요.');
-      if(isNew && intent === 'order') {$('#participate').scrollIntoView({behavior:'smooth'});$('#submit-order').focus({preventScroll:true});}
-      if(isNew && intent === 'my') myPreview();
-      if(isNew && intent === 'message') messagePreview();
-    } catch(error) {$('#nickname-error').textContent = error.message;}
+    busy($('#nickname-submit'), async () => {
+      try {
+        const {user} = await api('PATCH','/api/me',{nickname:result.nickname});
+        me.user = user;
+        refresh();
+        closeModal();
+        toast(isNew ? '닉네임을 설정했어요. 주문서를 작성할 수 있어요.' : '닉네임을 수정했어요.');
+        if(isNew) continueIntent(loginIntent);
+      } catch(error) {$('#nickname-error').textContent = error.message;}
+    });
   });
 }
-function completeDemoAuth() {
-  if(!account.profile) {nicknameForm(true);return;}
-  account.signIn();
-  if(account.order && account.order.status !== 'cancelled') setDraft(account.order);
-  refresh();
-  closeModal();
-  toast(`${account.profile.nickname} 님으로 미리보기 로그인했어요.`);
-  if(loginIntent === 'order') {$('#participate').scrollIntoView({behavior:'smooth'});$('#submit-order').focus({preventScroll:true});}
-  if(loginIntent === 'my') myPreview();
-  if(loginIntent === 'message') messagePreview();
+/** 카카오 로그인 후 돌아온 주소(?login=…&intent=…)를 처리하고 주소창에서는 지운다. */
+function handleLoginReturn() {
+  const params = new URLSearchParams(location.search);
+  const result = params.get('login');
+  if(!result) return;
+  loginIntent = params.get('intent') || 'login';
+  history.replaceState(null, '', location.pathname + location.hash);
+  if(result === 'cancelled') {toast('카카오 로그인을 취소했어요.');return;}
+  if(result === 'error' || !me.user) {toast('로그인하지 못했어요. 잠시 후 다시 시도해주세요.');return;}
+  if(!me.user.nickname) {nicknameForm(true);return;}
+  toast(`${nickname()} 님, 반가워요.`);
+  continueIntent(loginIntent);
 }
 function draftRecord() {const data = new FormData(form);return {quantity:parseQuantity($('#quantity').value), event:data.get('event'), payerName:data.get('payerName'), pickupDate:data.get('pickupDate')};}
 function responseRows(record) {
-  return `<div class="modal-detail-table"><div><span>주문번호</span><strong>${escapeHTML(record.id)}</strong></div><div><span>주문 닉네임</span><strong>${escapeHTML(record.nickname)}</strong></div><div><span>주문 수량</span><strong>${record.quantity}개</strong></div><div><span>수령 행사</span><strong>${EVENTS[record.event].name}</strong></div><div><span>수령일</span><strong>${pickupDateLabel(record.event,record.pickupDate)}</strong></div><div><span>입금자명</span><strong>${escapeHTML(record.payerName)}</strong></div><div><span>상태</span><strong>${ORDER_STATUS[record.status]}</strong></div><div><span>입금 금액</span><strong>${record.totalAmount == null ? '가격 설정 전' : record.totalAmount.toLocaleString('ko-KR') + '원'}</strong></div></div>`;
+  return `<div class="modal-detail-table"><div><span>주문번호</span><strong>${escapeHTML(record.id)}</strong></div><div><span>주문 닉네임</span><strong>${escapeHTML(record.nickname)}</strong></div><div><span>주문 수량</span><strong>${record.quantity}개</strong></div><div><span>수령 행사</span><strong>${EVENTS[record.event]?.name ?? ''}</strong></div><div><span>수령일</span><strong>${pickupDateLabel(record.event,record.pickupDate)}</strong></div><div><span>입금자명</span><strong>${escapeHTML(record.payerName)}</strong></div><div><span>상태</span><strong>${ORDER_STATUS[record.status] ?? ''}</strong></div><div><span>입금 금액</span><strong>${record.totalAmount.toLocaleString('ko-KR')}원</strong></div></div>`;
 }
-function submitPreview() {
-  try {
-    const persisted = account.placeOrder(draftRecord());refresh();
-    openModal(`<div class="modal-label">주문서 · 미리보기</div><h2 id="modal-title">주문서를 저장했어요</h2>${responseRows(account.order)}<p class="demo-notice">${persisted ? '이 브라우저에만 저장된 체험 주문이에요.' : '브라우저 저장이 제한되어 이번 화면에서만 확인할 수 있어요.'} 실제 주문으로 접수되지 않으며, 입금하거나 발주하지 않습니다.</p><div class="modal-actions"><button class="button primary" data-action="order">입금 안내 보기</button><button class="button secondary" data-action="my">내 주문 확인</button></div>`);
-  } catch(error) {toast(error.message);}
+async function submitOrder() {
+  let record;
+  try {record = validateOrder(draftRecord());} catch(error) {toast(error.message);return;}
+  await busy($('#submit-order'), async () => {
+    try {
+      const {order, created} = await api('PUT','/api/orders/mine',record);
+      me.order = order;refresh();
+      openModal(`<div class="modal-label">주문서</div><h2 id="modal-title">${created ? '주문서를 접수했어요' : '주문서를 수정했어요'}</h2>${responseRows(order)}<p>아직 주문 확정 전이에요. 입금 안내에 따라 ${GROUP_BUY.paymentDeadlineLabel}까지 입금해주세요. 운영자가 입금 내역을 확인하면 '입금 확인 완료'로 바뀌어요.</p><div class="modal-actions"><button class="button primary" data-action="order">입금 안내 보기</button><button class="button secondary" data-action="my">내 주문 확인</button></div>`);
+    } catch(error) {
+      if(error.status === 401) {await loadMe();loginPrompt('order');return;}
+      toast(error.message);await loadMe();
+    }
+  });
 }
 form.addEventListener('submit', event => {
   event.preventDefault();
-  if(account.signedIn && account.order && account.order.status !== 'cancelled' && (!ordersOpen() || account.order.status !== 'payment_pending')) {myPreview();return;}
+  const active = activeOrder();
+  if(signedIn() && active && (!ordersOpen() || active.status !== 'payment_pending')) {myOrder();return;}
   if(!form.reportValidity()) return;
   if(!ordersOpen()) {toast('주문 접수가 마감되었어요.');refresh();return;}
-  if(!account.signedIn) loginPreview('order');else submitPreview();
+  if(!signedIn()) {me.user ? nicknameForm(true) : loginPrompt('order');return;}
+  submitOrder();
 });
-function myPreview() {
-  if(!account.signedIn) {loginPreview('my');return;}
-  if(!account.order) {openModal(`<div class="modal-label">내 주문</div><h2 id="modal-title">주문 내역이 없어요</h2><p>${escapeHTML(nickname())} 님, 주문 수량과 수령할 행사를 선택해주세요. 기존 수요조사 응답은 주문으로 자동 전환되지 않아요.</p><button class="button primary" data-action="go-form">주문서 작성</button>`);return;}
-  const editable = ordersOpen() && account.order.status === 'payment_pending';
-  const needsDate = !account.order.pickupDate && EVENTS[account.order.event].available !== false && ordersOpen() && ['payment_pending','verification_requested'].includes(account.order.status);
-  const cancellable = !['cancelled','cancel_requested'].includes(account.order.status);
-  openModal(`<div class="modal-label">내 주문 · 미리보기</div><h2 id="modal-title">주문 내역</h2>${responseRows(account.order)}<p>입금 확인 요청은 입금 완료와 달라요. 실제 운영 시 운영자가 입금 내역을 확인한 뒤 주문을 확정합니다.</p><p class="demo-notice">체험 주문이에요. 실제 주문 접수와 입금 확인은 아직 연결 전입니다.</p><div class="modal-actions">${needsDate ? '<button class="button primary" data-action="pickup-date">수령일 추가</button>' : ''}${editable ? '<button class="button primary" data-action="edit">주문서 수정</button>' : ''}${account.order.status !== 'cancelled' ? '<button class="button secondary" data-action="order">입금 안내</button>' : '<button class="button primary" data-action="go-form">새 주문서 작성</button>'}</div>${cancellable ? '<button class="danger-action" data-action="cancel-confirm">주문 취소 요청</button>' : ''}`);
+async function myOrder() {
+  if(!signedIn()) {loginPrompt('my');return;}
+  await loadMe();
+  const order = me.order;
+  if(!order) {openModal(`<div class="modal-label">내 주문</div><h2 id="modal-title">주문 내역이 없어요</h2><p>${escapeHTML(nickname())} 님, 주문 수량과 수령할 행사를 선택해주세요.</p><button class="button primary" data-action="go-form">주문서 작성</button>`);return;}
+  const closed = ['cancelled','refunded'].includes(order.status);
+  const editable = ordersOpen() && order.status === 'payment_pending';
+  const needsDate = !order.pickupDate && EVENTS[order.event]?.available !== false && ordersOpen() && ['payment_pending','verification_requested'].includes(order.status);
+  const cancellable = !['cancelled','cancel_requested','refunded','picked_up'].includes(order.status);
+  const note = {payment_pending:'입금 후 \'입금 확인 요청\'을 눌러주세요. 요청만으로 주문이 확정되지는 않아요.',verification_requested:'운영자가 입금 내역을 확인하고 있어요. 확인되면 \'입금 확인 완료\'로 바뀌어요.',paid:'입금이 확인됐어요. 선택한 행사에서 수령해주세요.',cancel_requested:'운영자가 취소와 환불 여부를 확인하고 있어요.',cancelled:'취소된 주문이에요.',refunded:'환불이 완료된 주문이에요.',picked_up:'수령이 완료된 주문이에요.'}[order.status] ?? '';
+  openModal(`<div class="modal-label">내 주문</div><h2 id="modal-title">주문 내역</h2>${responseRows(order)}<p>${note}</p><div class="modal-actions">${needsDate ? '<button class="button primary" data-action="pickup-date">수령일 추가</button>' : ''}${editable ? '<button class="button primary" data-action="edit">주문서 수정</button>' : ''}${!closed ? '<button class="button secondary" data-action="order">입금 안내</button>' : ordersOpen() ? '<button class="button primary" data-action="go-form">새 주문서 작성</button>' : ''}</div>${cancellable ? '<button class="danger-action" data-action="cancel-confirm">주문 취소</button>' : ''}`);
 }
-function orderPreview() {
-  const record = account.signedIn ? account.order : null;
-  if(!record || record.status === 'cancelled') {openModal(`<div class="modal-label">입금 안내</div><h2 id="modal-title">주문서를 먼저 작성해주세요</h2><p>주문서를 제출하면 주문번호와 입금 안내를 확인할 수 있어요.</p><button class="button primary" data-action="go-form">주문서 작성</button>`);return;}
-  openModal(`<div class="modal-label">입금 안내 · 미리보기</div><h2 id="modal-title">주문서 제출 다음 단계</h2><div class="order-progress"><span>주문서 제출</span><span>입금 안내</span><span>입금 확인</span></div>${responseRows(record)}<div class="payment-details"><p class="payment-bank-name"><strong>${escapeHTML(GROUP_BUY.bankAccount.bank)}</strong><span>예금주 ${escapeHTML(GROUP_BUY.bankAccount.holder)}</span></p><p class="payment-account-number">${escapeHTML(GROUP_BUY.bankAccount.number)}</p><div class="payment-copy-buttons"><button class="text-button" data-action="copy-account">계좌번호 복사</button><button class="text-button" data-action="copy-amount">입금 금액 복사</button></div><p class="payment-deadline">입금 기한: ${GROUP_BUY.paymentDeadlineLabel}<br>주문 마감: ${GROUP_BUY.ordersCloseLabel}</p></div><p class="demo-notice">현재는 미리보기예요. 실제 주문 접수·입금 확인이 연결되기 전에는 입금하지 마세요. ${paymentWindowOpen() ? '입금 기한은 ' + GROUP_BUY.paymentDeadlineLabel + '입니다.' : '입금 기한이 지났어요. 기한 내 입금 여부는 실제 입금 내역으로 확인해야 해요.'} 아래 버튼은 입금 확인 요청 상태만 체험합니다. 사용자 요청만으로 주문이 확정되지 않아요.</p><button class="button primary" data-action="payment-request" ${record.status !== 'payment_pending' ? 'disabled' : ''}>${record.status === 'payment_pending' ? '입금 확인 요청 · 체험' : ORDER_STATUS[record.status]}</button><button class="button secondary" data-action="my">내 주문 확인</button>`);
+function paymentGuide() {
+  const record = signedIn() ? activeOrder() : null;
+  if(!record) {openModal(`<div class="modal-label">입금 안내</div><h2 id="modal-title">주문서를 먼저 작성해주세요</h2><p>주문서를 제출하면 주문번호와 입금 안내를 확인할 수 있어요.</p><button class="button primary" data-action="go-form">주문서 작성</button>`);return;}
+  const pending = record.status === 'payment_pending';
+  openModal(`<div class="modal-label">입금 안내</div><h2 id="modal-title">주문서 제출 다음 단계</h2><div class="order-progress"><span>주문서 제출</span><span>입금 안내</span><span>입금 확인</span></div>${responseRows(record)}<div class="payment-details"><p class="payment-bank-name"><strong>${escapeHTML(GROUP_BUY.bankAccount.bank)}</strong><span>예금주 ${escapeHTML(GROUP_BUY.bankAccount.holder)}</span></p><p class="payment-account-number">${escapeHTML(GROUP_BUY.bankAccount.number)}</p><div class="payment-copy-buttons"><button class="text-button" data-action="copy-account">계좌번호 복사</button><button class="text-button" data-action="copy-amount">입금 금액 복사</button></div><p class="payment-deadline">입금 기한: ${GROUP_BUY.paymentDeadlineLabel}<br>주문 마감: ${GROUP_BUY.ordersCloseLabel}</p></div><p>${paymentWindowOpen() ? `입금자명 <strong>${escapeHTML(record.payerName)}</strong>(으)로 ${record.totalAmount.toLocaleString('ko-KR')}원을 보내주세요. 입금한 뒤 아래 버튼을 눌러주세요.` : '입금 기한이 지났어요. 입금 여부는 운영자가 실제 입금 내역으로 확인해요.'} 운영자가 입금 내역을 대조한 뒤 주문이 확정돼요.</p><button class="button primary" data-action="payment-request" ${pending ? '' : 'disabled'}>${pending ? '입금했어요 · 입금 확인 요청' : ORDER_STATUS[record.status]}</button><button class="button secondary" data-action="my">내 주문 확인</button>`);
 }
-function addPickupDatePreview() {
-  if(!account.signedIn || !account.order) {loginPreview('my');return;}
-  const record = account.order;
-  openModal(`<div class="modal-label">내 주문 · 미리보기</div><h2 id="modal-title">수령일을 선택해주세요</h2><p>${EVENTS[record.event].name}에서 수령할 날짜를 골라주세요. 주문번호와 입금 확인 상태는 그대로 유지돼요.</p><form id="add-pickup-date-form"><div class="pickup-days">${pickupDayChoices(record.event,record.pickupDate,'newPickupDate')}</div><button class="button primary" type="submit">수령일 저장</button><p class="field-error" id="pickup-date-error" role="alert"></p></form>`);
+function addPickupDate() {
+  const record = activeOrder();
+  if(!signedIn() || !record) {loginPrompt('my');return;}
+  openModal(`<div class="modal-label">내 주문</div><h2 id="modal-title">수령일을 선택해주세요</h2><p>${EVENTS[record.event].name}에서 수령할 날짜를 골라주세요. 주문번호와 입금 확인 상태는 그대로 유지돼요.</p><form id="add-pickup-date-form"><div class="pickup-days">${pickupDayChoices(record.event,record.pickupDate,'newPickupDate')}</div><button class="button primary" type="submit" id="pickup-date-submit">수령일 저장</button><p class="field-error" id="pickup-date-error" role="alert"></p></form>`);
   $('#add-pickup-date-form').addEventListener('submit',event => {
-    event.preventDefault();const date = new FormData(event.currentTarget).get('newPickupDate');
-    try{const persisted = account.setPickupDate(date);refresh();myPreview();toast(persisted ? '수령일을 저장했어요.' : '저장이 제한되어 이번 화면에만 반영했어요.');}catch(error){$('#pickup-date-error').textContent=error.message;}
+    event.preventDefault();const pickupDate = new FormData(event.currentTarget).get('newPickupDate');
+    busy($('#pickup-date-submit'), async () => {
+      try {me.order = (await api('PATCH','/api/orders/mine/pickup-date',{pickupDate})).order;refresh();await myOrder();toast('수령일을 저장했어요.');}
+      catch(error) {$('#pickup-date-error').textContent = error.message;}
+    });
   });
 }
-function withdrawPreview() {
-  if(!account.signedIn) {loginPreview();return;}
-  openModal(`<div class="modal-label">내 계정 · 미리보기</div><h2 id="modal-title">회원탈퇴</h2><p><span class="nickname-display">${escapeHTML(nickname())}</span> 님의 미리보기 계정을 삭제합니다.</p><ul class="withdraw-list"><li>진행 중인 주문이 있으면 주문 처리 후 탈퇴할 수 있어요.</li><li>미리보기 로그인 상태가 해제돼요.</li><li>실제 카카오 계정과 연결되어 있지 않아 카카오 계정에는 영향을 주지 않아요.</li></ul><label class="withdraw-checkbox"><input id="withdraw-consent" type="checkbox"><span>미리보기 계정 삭제 시 닉네임, 취소된 체험 주문, 문의 대화가 삭제되는 점을 확인했어요.</span></label><p id="withdraw-error" class="field-error" role="alert"></p><div class="modal-actions"><button class="button secondary" data-action="close">취소</button><button class="button danger" id="withdraw-button" data-action="withdraw" disabled>탈퇴하기</button></div>`);
-  const blocked = account.order && account.order.status !== 'cancelled';
+function withdrawConfirm() {
+  if(!signedIn()) {loginPrompt();return;}
+  openModal(`<div class="modal-label">내 계정</div><h2 id="modal-title">회원탈퇴</h2><p><span class="nickname-display">${escapeHTML(nickname())}</span> 님의 계정을 삭제합니다.</p><ul class="withdraw-list"><li>진행 중인 주문이 있으면 주문 처리 후 탈퇴할 수 있어요.</li><li>닉네임과 문의 대화가 삭제되고, 카카오 계정과의 연결이 해제돼요.</li><li>지난 주문 기록(주문번호·수량·입금자명·금액)은 입금 대조와 환불 확인을 위해 닉네임 없이 보관돼요.</li></ul><label class="withdraw-checkbox"><input id="withdraw-consent" type="checkbox"><span>위 내용을 확인했어요.</span></label><p id="withdraw-error" class="field-error" role="alert"></p><div class="modal-actions"><button class="button secondary" data-action="close">취소</button><button class="button danger" id="withdraw-button" data-action="withdraw" disabled>탈퇴하기</button></div>`);
+  const blocked = !!activeOrder() && !['picked_up'].includes(activeOrder().status);
   if(blocked) $('#withdraw-error').textContent = '진행 중인 주문이 있어요. 주문 처리 후 탈퇴할 수 있어요.';
-  $('#withdraw-consent').addEventListener('change', () => $('#withdraw-button').disabled = !!blocked || !$('#withdraw-consent').checked);
+  $('#withdraw-consent').addEventListener('change', () => $('#withdraw-button').disabled = blocked || !$('#withdraw-consent').checked);
 }
 async function copyPaymentValue(kind) {
-  if(!account.signedIn || !account.order || account.order.status === 'cancelled') {toast('주문 내역을 먼저 확인해주세요.');return;}
+  const record = activeOrder();
+  if(!signedIn() || !record) {toast('주문 내역을 먼저 확인해주세요.');return;}
   const isAccount = kind === 'account';
-  const amount = account.order.totalAmount;
-  if(!isAccount && !Number.isSafeInteger(amount)) {toast('입금 금액을 확인해주세요.');return;}
-  const value = isAccount ? GROUP_BUY.bankAccount.number.replace(/\D/g,'') : String(amount);
+  const value = isAccount ? GROUP_BUY.bankAccount.number.replace(/\D/g,'') : String(record.totalAmount);
   const label = isAccount ? '계좌번호' : '입금 금액';
   try {await navigator.clipboard.writeText(value);toast(`${label}을 복사했어요.`);}
   catch {
-    openModal(`<div class="modal-label">입금 안내 · 미리보기</div><h2 id="modal-title">${label} 복사</h2><p>아래 값을 선택해 복사해주세요.</p><input id="payment-copy-value" class="share-link" readonly aria-label="${label}"><button class="button secondary" data-action="order">입금 안내로 돌아가기</button>`);
+    openModal(`<div class="modal-label">입금 안내</div><h2 id="modal-title">${label} 복사</h2><p>아래 값을 선택해 복사해주세요.</p><input id="payment-copy-value" class="share-link" readonly aria-label="${label}"><button class="button secondary" data-action="order">입금 안내로 돌아가기</button>`);
     $('#payment-copy-value').value=value;$('#payment-copy-value').focus();$('#payment-copy-value').select();
   }
 }
 async function share() {
   const url = new URL(location.href);url.hash = '';url.search = '';
-  try {await navigator.clipboard.writeText(url.href);toast('미리보기 링크를 복사했어요.');}
-  catch {openModal(`<div class="modal-label">링크 공유</div><h2 id="modal-title">주문 링크</h2><p>아래 링크를 복사해 공유해주세요. 현재는 디자인 시안이에요.</p><input id="share-link" class="share-link" aria-label="공유 링크" readonly><button class="button primary" data-action="select-share">링크 선택하기</button>`);$('#share-link').value = url.href;$('#share-link').select();}
+  try {await navigator.clipboard.writeText(url.href);toast('주문 링크를 복사했어요.');}
+  catch {openModal(`<div class="modal-label">링크 공유</div><h2 id="modal-title">주문 링크</h2><p>아래 링크를 복사해 공유해주세요.</p><input id="share-link" class="share-link" aria-label="공유 링크" readonly><button class="button primary" data-action="select-share">링크 선택하기</button>`);$('#share-link').value = url.href;$('#share-link').select();}
 }
 function refreshInquiryBadge() {
-  const count = account.signedIn ? inquiries.unread('user') : 0;
+  const count = signedIn() ? me.unread : 0;
   document.querySelectorAll('[data-inquiry-count]').forEach(badge => {badge.hidden = !count;badge.textContent = String(count);});
 }
-function messagePreview(viewer = 'user') {
-  if(!account.signedIn) {loginPreview('message');return;}
-  const operator = viewer === 'operator';
-  inquiries.markRead(viewer);
-  refreshInquiryBadge();
-  openModal(`<div class="modal-label">${operator ? '운영자 답변 화면 · 미리보기' : '운영자에게 문의'}</div><h2 id="modal-title">${operator ? escapeHTML(nickname()) + ' 님과의 대화' : '문의 메시지'}</h2><p class="message-preview-note">이 브라우저에서만 체험하는 대화예요. 운영자에게 실제로 전달되지 않습니다.</p><div class="message-history" id="message-history" role="log" aria-live="polite" aria-label="문의 대화"></div><form id="message-form" class="message-compose"><label class="sr-only" for="message-input">${operator ? '운영자 답변' : '문의 내용'}</label><textarea id="message-input" rows="3" maxlength="1000" placeholder="${operator ? '답변을 입력해주세요' : '궁금한 점을 남겨주세요'}" aria-describedby="message-count message-error"></textarea><div class="message-compose-bottom"><span id="message-count">0 / 500</span><button type="submit" class="button lime" id="message-send">${operator ? '답변 보내기' : '보내기'}</button></div><p id="message-error" class="field-error" role="alert"></p></form><div class="message-view-switch"><button type="button" class="text-button" data-action="${operator ? 'message' : 'message-operator'}">${operator ? '사용자 화면으로 돌아가기' : '운영자 답변 화면 체험'}</button></div>`);
+async function messages() {
+  if(!signedIn()) {me.user ? nicknameForm(true) : loginPrompt('message');return;}
+  openModal(`<div class="modal-label">운영자에게 문의</div><h2 id="modal-title">문의 메시지</h2><p class="message-preview-note">운영자가 확인 후 이 대화에 답변해요. 실시간 상담은 아니에요.</p><div class="message-history" id="message-history" role="log" aria-live="polite" aria-label="문의 대화"><p class="message-empty">불러오는 중…</p></div><form id="message-form" class="message-compose"><label class="sr-only" for="message-input">문의 내용</label><textarea id="message-input" rows="3" maxlength="1000" placeholder="궁금한 점을 남겨주세요" aria-describedby="message-count message-error"></textarea><div class="message-compose-bottom"><span id="message-count">0 / 500</span><button type="submit" class="button lime" id="message-send">보내기</button></div><p id="message-error" class="field-error" role="alert"></p></form>`);
   modal.classList.add('modal-messages');
   const history = $('#message-history');
+  let list = [];
   function renderHistory() {
-    if(!inquiries.messages.length) {history.innerHTML='<p class="message-empty">수령·주문 관련 궁금한 점을 남겨주세요.<br>답변은 이 대화에서 확인할 수 있어요.</p>';return;}
+    if(!list.length) {history.innerHTML='<p class="message-empty">수령·주문 관련 궁금한 점을 남겨주세요.<br>답변은 이 대화에서 확인할 수 있어요.</p>';return;}
     let day = '';
-    history.innerHTML = inquiries.messages.map(m => {
+    const atBottom = history.scrollHeight - history.scrollTop - history.clientHeight < 40;
+    history.innerHTML = list.map(m => {
       const date = new Date(m.createdAt);
       const currentDay = date.toLocaleDateString('ko-KR',{timeZone:'Asia/Seoul',year:'numeric',month:'long',day:'numeric'});
       const divider = currentDay !== day ? `<p class="message-day">${currentDay}</p>` : '';day=currentDay;
-      const mine = m.sender === viewer;
+      const mine = m.sender === 'user';
       const time = date.toLocaleTimeString('ko-KR',{timeZone:'Asia/Seoul',hour:'2-digit',minute:'2-digit'});
-      return divider + `<div class="message-row ${mine ? 'outgoing' : 'incoming'}"><span class="message-sender">${m.sender === 'operator' ? '운영자' : escapeHTML(nickname())}</span><div class="message-bubble">${escapeHTML(m.text)}</div><span class="message-meta">${mine ? (m.read ? '읽음 · ' : '보냄 · ') : '받음 · '}${time}</span></div>`;
+      return divider + `<div class="message-row ${mine ? 'outgoing' : 'incoming'}"><span class="message-sender">${mine ? escapeHTML(nickname()) : '운영자'}</span><div class="message-bubble">${escapeHTML(m.text)}</div><span class="message-meta">${mine ? (m.read ? '읽음 · ' : '보냄 · ') : '받음 · '}${time}</span></div>`;
     }).join('');
-    history.scrollTop = history.scrollHeight;
+    if(atBottom || !history.dataset.loaded) history.scrollTop = history.scrollHeight;
+    history.dataset.loaded = '1';
   }
-  renderHistory();
+  async function reload() {
+    try {list = (await api('GET','/api/messages')).messages;me.unread = 0;refreshInquiryBadge();renderHistory();}
+    catch(error) {$('#message-error').textContent = error.message;}
+  }
+  await reload();
+  // 대화창이 열려 있는 동안 30초마다 새 답변을 확인한다.
+  clearInterval(messagePoll);
+  messagePoll = setInterval(() => {if(modal.open && modal.classList.contains('modal-messages') && !document.hidden) reload();}, 30000);
   const input = $('#message-input'), send = $('#message-send');
   function updateCount() {const count=Array.from(input.value).length;$('#message-count').textContent=`${count} / 500`;$('#message-count').classList.toggle('over-limit',count>500);send.disabled=!input.value.trim()||count>500;$('#message-error').textContent='';}
   input.addEventListener('input', updateCount);updateCount();
   $('#message-form').addEventListener('submit', event => {
     event.preventDefault();
-    if(!account.signedIn) {loginPreview('message');return;}
-    try {
-      const {persisted} = inquiries.send(viewer,validateMessage(input.value));
-      input.value='';updateCount();renderHistory();refreshInquiryBadge();
-      if(!persisted) $('#message-error').textContent='브라우저 저장이 제한돼 이번 화면에서만 확인할 수 있어요.';
-      input.focus({preventScroll:true});
-    } catch(error) {$('#message-error').textContent=error.message;}
+    let text;
+    try {text = validateMessage(input.value);} catch(error) {$('#message-error').textContent=error.message;return;}
+    busy(send, async () => {
+      try {
+        const {message} = await api('POST','/api/messages',{text});
+        list.push(message);input.value='';updateCount();history.dataset.loaded='';renderHistory();
+        input.focus({preventScroll:true});
+      } catch(error) {$('#message-error').textContent=error.message;}
+    });
   });
 }
 document.addEventListener('click', event => {
@@ -248,40 +297,52 @@ document.addEventListener('click', event => {
   const button = event.target.closest('[data-action]');if(!button) return;
   toggleMenu(false);
   switch(button.dataset.action) {
-    case 'login': loginPreview();break;
-    case 'demo-auth': completeDemoAuth();break;
+    case 'login': loginPrompt();break;
     case 'nickname-edit': nicknameForm();break;
-    case 'logout': account.logout();clearDraft();refresh();closeModal();toast('로그아웃했어요. 주문 내역은 유지돼요.');$('#header-login').focus();break;
-    case 'withdraw-confirm': withdrawPreview();break;
+    case 'logout':
+      busy(button, async () => {
+        try {await api('POST','/api/auth/logout');} catch {}
+        me = {user:null, order:null, unread:0};clearDraft();refresh();closeModal();toast('로그아웃했어요. 주문 내역은 유지돼요.');$('#header-login').focus();
+      });break;
+    case 'withdraw-confirm': withdrawConfirm();break;
     case 'withdraw':
       if(!$('#withdraw-consent')?.checked) return;
-      try {if(!account.signedIn) throw new Error('로그인해주세요.');if(account.order && account.order.status !== 'cancelled') throw new Error('진행 중인 주문이 있어요. 주문 처리 후 탈퇴할 수 있어요.');inquiries.clear();account.withdraw();clearDraft();refresh();closeModal();toast('미리보기 계정을 삭제했어요.');$('#header-login').focus();}
-      catch(error) {$('#withdraw-error').textContent = error.message || '삭제를 완료하지 못했어요.';}
-      break;
-    case 'my': myPreview();break;
-    case 'message': messagePreview();break;
-    case 'message-operator': messagePreview('operator');break;
-    case 'pickup-date': addPickupDatePreview();break;
-    case 'order': orderPreview();break;
+      busy(button, async () => {
+        try {await api('DELETE','/api/me');me = {user:null, order:null, unread:0};clearDraft();refresh();closeModal();toast('탈퇴했어요. 이용해주셔서 고마워요.');$('#header-login').focus();}
+        catch(error) {$('#withdraw-error').textContent = error.message;}
+      });break;
+    case 'my': myOrder();break;
+    case 'message': messages();break;
+    case 'admin': location.href = '/admin';break;
+    case 'pickup-date': addPickupDate();break;
+    case 'order': paymentGuide();break;
     case 'copy-account': copyPaymentValue('account');break;
     case 'copy-amount': copyPaymentValue('amount');break;
     case 'payment-request':
-      try {const persisted = account.requestPaymentCheck();refresh();myPreview();toast(persisted ? '입금 확인 요청 상태로 변경했어요. 실제 입금 확인은 아닙니다.' : '저장이 제한되어 이번 화면에만 반영했어요.');}catch(error){toast(error.message);}break;
+      busy(button, async () => {
+        try {me.order = (await api('POST','/api/orders/mine/payment-request')).order;refresh();await myOrder();toast('입금 확인을 요청했어요. 운영자가 확인하면 상태가 바뀌어요.');}
+        catch(error) {toast(error.message);await loadMe();}
+      });break;
     case 'edit':
-      if(!account.signedIn) loginPreview('my');
-      else if(!ordersOpen() || account.order?.status !== 'payment_pending') toast('현재 상태에서는 주문서를 수정할 수 없어요.');
-      else {setDraft(account.order);goToForm();toast('주문서를 변경하고 수정 버튼을 눌러주세요.');}break;
-    case 'go-form': if(account.order?.status === 'cancelled') clearDraft();goToForm();break;
-    case 'cancel-confirm':
-      if(!account.signedIn) {loginPreview('my');break;}
-      openModal(`<div class="modal-label">내 주문</div><h2 id="modal-title">체험 주문 취소</h2><p>마감 전 입금 대기 상태이면 체험 주문을 취소해요. 입금 확인 요청 이후 또는 주문 마감 후에는 운영자 확인이 필요한 취소 요청으로 남겨요. 주문 기록은 삭제하지 않아요.</p><div class="modal-actions"><button class="button secondary" data-action="my">돌아가기</button><button class="button primary" data-action="cancel">취소 요청</button></div>`);break;
+      if(!signedIn()) loginPrompt('my');
+      else if(!ordersOpen() || activeOrder()?.status !== 'payment_pending') toast('현재 상태에서는 주문서를 수정할 수 없어요.');
+      else {setDraft(activeOrder());goToForm();toast('주문서를 변경하고 수정 버튼을 눌러주세요.');}break;
+    case 'go-form': if(!activeOrder()) clearDraft();goToForm();break;
+    case 'cancel-confirm': {
+      if(!signedIn()) {loginPrompt('my');break;}
+      const instant = activeOrder()?.status === 'payment_pending' && ordersOpen();
+      openModal(`<div class="modal-label">내 주문</div><h2 id="modal-title">주문 취소</h2><p>${instant ? '입금 전 주문이라 바로 취소돼요.' : '입금 확인 요청 이후 또는 주문 마감 후에는 운영자가 입금 내역을 확인한 뒤 취소·환불을 처리해요.'} 주문 기록은 삭제하지 않아요.</p><div class="modal-actions"><button class="button secondary" data-action="my">돌아가기</button><button class="button primary" data-action="cancel">${instant ? '주문 취소' : '취소 요청'}</button></div>`);break;
+    }
     case 'cancel':
-      try {const persisted = account.cancelOrder();refresh();myPreview();toast(persisted ? (account.order.status === 'cancelled' ? '체험 주문을 취소했어요.' : '취소 확인 요청으로 남겼어요.') : '브라우저 저장이 제한되어 이번 화면에만 반영됐어요.');}catch(error) {toast(error.message);}break;
+      busy(button, async () => {
+        try {me.order = (await api('POST','/api/orders/mine/cancel')).order;refresh();await myOrder();toast(me.order.status === 'cancelled' ? '주문을 취소했어요.' : '취소를 요청했어요. 운영자가 확인 후 처리해요.');}
+        catch(error) {toast(error.message);await loadMe();}
+      });break;
     case 'close': closeModal();break;
     case 'design': openModal(`<div class="modal-label">슬로건 디자인</div><h2 id="modal-title">춤은 불법이 아니다</h2><div class="design-gallery"><div class="towel-crop back"><img src="/assets/slogan.png" alt="춤추는 해골 패턴 면"></div><div class="towel-crop front"><img src="/assets/slogan.png" alt="춤은 불법이 아니다 문구 면"></div></div><p>소재·크기·인쇄 사양은 제작 조건 확인 후 안내할 예정이에요.</p>`, {wide:true});break;
     case 'share': share();break;
     case 'select-share': $('#share-link').focus();$('#share-link').select();break;
-    case 'about': openModal(`<div class="modal-label">디자인 시안</div><h2 id="modal-title">미리보기 안내</h2><p>주문서 제출과 입금 안내, 계정과 문의 대화 흐름을 확인할 수 있는 시안이에요.</p><div class="modal-detail-table"><div><span>계정 흐름</span><strong>닉네임 설정·수정, 로그아웃, 탈퇴</strong></div><div><span>주문 흐름</span><strong>주문서 작성·입금 확인 요청·수정·취소</strong></div><div><span>수령</span><strong>경기인디뮤직페스티벌 / 세종보헤미안뮤직페스티벌 현장</strong></div><div><span>문의 흐름</span><strong>500자 메시지·운영자 답변·읽음 표시</strong></div><div><span>아직 연결 전</span><strong>카카오 인증·주문 DB·입금 확인·문의 전달</strong></div></div><p class="demo-notice">닉네임과 체험 주문은 현재 브라우저에만 저장돼요. 진행 중인 체험 주문이 있으면 탈퇴를 막아요. 실제 운영 시 주문 기록 보관과 환불·탈퇴 처리는 서버에서 관리해야 해요.</p><button class="button primary" data-action="close">닫기</button>`);break;
+    case 'about': openModal(`<div class="modal-label">이용 안내</div><h2 id="modal-title">개인정보와 주문 기록</h2><div class="modal-detail-table"><div><span>카카오에서 받는 정보</span><strong>회원번호만 (이름·전화번호·이메일 없음)</strong></div><div><span>직접 입력하는 정보</span><strong>닉네임, 주문 수량·수령 행사·수령일, 입금자명, 문의 내용</strong></div><div><span>이용 목적</span><strong>주문 접수, 입금 대조, 현장 수령 확인, 문의 답변</strong></div><div><span>탈퇴 시</span><strong>닉네임·문의 대화 삭제, 카카오 연결 해제. 주문 기록은 입금 대조·환불 확인을 위해 닉네임 없이 보관</strong></div><div><span>로그인 유지</span><strong>14일 (로그아웃하면 즉시 종료)</strong></div></div><p>진행 중인 주문이 있으면 주문 처리 후 탈퇴할 수 있어요. 궁금한 점은 문의 메시지로 남겨주세요.</p><button class="button primary" data-action="close">닫기</button>`);break;
   }
 });
 
@@ -296,5 +357,11 @@ function updateCountdown(now = new Date()) {
 }
 updateCountdown();
 setInterval(() => updateCountdown(),1000);
-document.addEventListener('visibilitychange',() => {updateCountdown();refresh();});
-setInterval(() => refresh(),30000);
+refresh();
+loadMe().then(() => {
+  if(activeOrder()) setDraft(activeOrder());
+  handleLoginReturn();
+});
+// 다른 기기에서 바뀐 주문 상태·새 답변을 가끔 다시 확인한다.
+document.addEventListener('visibilitychange',() => {updateCountdown();if(!document.hidden) loadMe();});
+setInterval(() => {if(!document.hidden && signedIn()) loadMe();},60000);

@@ -1,0 +1,86 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+/// 카카오 회원번호(kakaoId)만 받는다. 닉네임은 사이트에서 직접 입력.
+/// 탈퇴 시 kakaoId를 지우고 닉네임을 비식별 값으로 바꾼다. 주문 기록은 입금 대조를 위해 남긴다.
+model User {
+  id          Int       @id @default(autoincrement())
+  kakaoId     String?   @unique
+  nickname    String?
+  createdAt   DateTime  @default(now())
+  lastLoginAt DateTime  @default(now())
+  withdrawnAt DateTime?
+
+  sessions Session[]
+  orders   Order[]
+  messages Message[] @relation("thread")
+}
+
+/// 쿠키에는 무작위 토큰, DB에는 HMAC 해시만 둔다.
+model Session {
+  tokenHash String   @id
+  userId    Int
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// status: payment_pending | verification_requested | paid | cancel_requested | cancelled | refunded | picked_up
+/// 사용자당 진행 중(cancelled/refunded 이외) 주문은 하나. 가격·금액은 주문 시점 값을 저장한다.
+model Order {
+  id          String    @id
+  userId      Int
+  nickname    String
+  quantity    Int
+  event       String
+  pickupDate  String?
+  payerName   String
+  unitPrice   Int
+  totalAmount Int
+  status      String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  user        User      @relation(fields: [userId], references: [id])
+  logs        OrderLog[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+/// 주문 상태가 바뀔 때마다 누가(사용자/운영자) 언제 무엇을 바꿨는지 남긴다.
+model OrderLog {
+  id          Int      @id @default(autoincrement())
+  orderId     String
+  actor       String
+  actorUserId Int?
+  fromStatus  String?
+  toStatus    String
+  note        String?
+  createdAt   DateTime @default(now())
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+}
+
+/// 사용자별 문의 대화. userId는 대화 주인(사용자), sender는 user | operator.
+model Message {
+  id          Int       @id @default(autoincrement())
+  userId      Int
+  sender      String
+  operatorId  Int?
+  text        String
+  createdAt   DateTime  @default(now())
+  readAt      DateTime?
+  user        User      @relation("thread", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}

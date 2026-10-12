@@ -9,13 +9,12 @@ export const GROUP_BUY = Object.freeze({
   bankAccount: Object.freeze({bank: '토스뱅크', number: '1002-8046-9572', holder: '조현영'}),
   paymentDeadline: '2026-10-13T23:59:59.999+09:00',
   paymentDeadlineLabel: '10/13(화) 23:59',
-  previewOnly: true,
 });
 export function ordersOpen(now = new Date()) {
   const time = new Date(now).getTime();
   return Number.isFinite(time) && time < new Date(GROUP_BUY.ordersCloseAt).getTime();
 }
-export const ORDER_STATUS = Object.freeze({payment_pending:'입금 대기',verification_requested:'입금 확인 요청',cancel_requested:'취소 확인 요청',cancelled:'취소됨'});
+export const ORDER_STATUS = Object.freeze({payment_pending:'입금 대기',verification_requested:'입금 확인 요청',paid:'입금 확인 완료',cancel_requested:'취소 확인 요청',cancelled:'취소됨',refunded:'환불 완료',picked_up:'수령 완료'});
 
 export function paymentWindowOpen(now = new Date()) {
   const time = new Date(now).getTime();

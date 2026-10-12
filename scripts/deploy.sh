@@ -18,6 +18,8 @@ main() {
   port=${port:-3220}
 
   echo "현재 ${prev:0:7} → 대상 ${target:0:7}"
+  test -f .env || { echo ".env가 없어요. .env.example을 복사해 채워주세요." >&2; exit 1; }
+  docker compose exec -T web node dist/src/scripts/backup.js || echo "배포 전 백업 실패(계속 진행)" >&2
   git merge -q --ff-only origin/main
 
   if build_and_check "$port"; then
@@ -36,7 +38,7 @@ main() {
 build_and_check() {
   docker compose up -d --build --remove-orphans
   for _ in $(seq 1 30); do
-    curl -fsS "http://127.0.0.1:$1/healthz" >/dev/null 2>&1 && return 0
+    curl -fsS "http://127.0.0.1:$1/api/health" >/dev/null 2>&1 && return 0
     sleep 2
   done
   return 1

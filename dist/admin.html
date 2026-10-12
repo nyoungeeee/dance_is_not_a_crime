@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>운영자 화면 | 춤은 불법이 아니다</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%23161616'/%3E%3Ctext x='32' y='48' text-anchor='middle' font-size='49' fill='%23d7fa61'%3E✳︎%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/admin.css?v=1"><script type="module" src="/admin.js?v=1"></script>
+</head>
+<body>
+  <header class="bar"><a href="/" class="brand">춤은 불법이 아니다 <small>운영자</small></a><nav><button data-tab="orders" class="tab active">주문</button><button data-tab="threads" class="tab">문의 <span id="thread-unread" class="badge" hidden></span></button></nav><span id="who"></span></header>
+  <main>
+    <p id="gate" class="gate">불러오는 중…</p>
+    <section id="orders" hidden>
+      <div id="summary" class="summary"></div>
+      <div class="filters"><select id="status-filter" aria-label="상태"><option value="">전체 상태</option></select><input id="search" type="search" placeholder="주문번호·닉네임·입금자명 검색" aria-label="검색"><button id="reload" class="ghost">새로고침</button><button id="csv" class="ghost">CSV 내려받기</button></div>
+      <div class="table-wrap"><table><thead><tr><th>주문번호</th><th>닉네임</th><th>입금자명</th><th>수량</th><th>금액</th><th>수령</th><th>상태</th><th>접수</th><th>처리</th></tr></thead><tbody id="order-rows"></tbody></table></div>
+    </section>
+    <section id="threads" hidden>
+      <div class="thread-layout"><ul id="thread-list" class="thread-list"></ul><div id="thread-view" class="thread-view"><p class="muted">왼쪽에서 대화를 고르세요.</p></div></div>
+    </section>
+  </main>
+  <div id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

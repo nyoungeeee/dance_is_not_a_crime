@@ -1,4 +1,4 @@
-# CI: PR과 main 푸시마다 Docker 이미지를 빌드하고 정적 파일이 뜨는지 확인한다.
+# CI: PR과 main 푸시마다 서버 테스트(모의 로그인으로 주문·문의·운영자 흐름)와 Docker 이미지 확인.
 # CD: main에 푸시되고 CI가 통과하면 Cloudflare Tunnel SSH로 서버에 들어가 scripts/deploy.sh를 실행한다.
 #     배포 키는 서버 authorized_keys에서 deploy.sh만 실행하도록 묶여 있다(README 배포 절 참고).
 #     저장소 변수 DEPLOY_ENABLED=true를 넣기 전까지 deploy 잡은 건너뛴다.
@@ -18,20 +18,34 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  server:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: server } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: server/package-lock.json }
+      - run: npm ci
+      - run: npm test
+
   docker:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t dance:ci .
-      - name: 정적 파일 응답 확인
+      - name: 운영 모드로 띄워 응답 확인
         run: |
-          docker run -d --name dance -p 8080:80 dance:ci
-          for _ in $(seq 1 15); do curl -fsS http://127.0.0.1:8080/healthz && break; sleep 1; done
+          docker run -d --name dance -p 8080:3000 -e PUBLIC_URL=https://example.invalid \
+            -e SESSION_SECRET=ci-only-session-secret-0123456789abcdef -e KAKAO_REST_API_KEY=ci dance:ci
+          for _ in $(seq 1 30); do curl -fsS http://127.0.0.1:8080/api/health && break; sleep 1; done
           curl -fsS http://127.0.0.1:8080/ | grep -q '<html'
           curl -fsSI http://127.0.0.1:8080/app.js | grep -qi 'javascript'
+          curl -fsS http://127.0.0.1:8080/api/me | grep -q '"user":null'
+      - if: failure()
+        run: docker logs dance
 
   deploy:
-    needs: [docker]
+    needs: [server, docker]
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
     environment: production
@@ -62,4 +76,4 @@ jobs:
             -o ProxyCommand="cloudflared access ssh --hostname %h --service-token-id $CF_ID --service-token-secret $CF_SECRET" \
             "$SSH_USER@$SSH_HOST" deploy
       - name: 외부 확인
-        run: curl -fsS "$PUBLIC_URL/healthz"
+        run: curl -fsS "$PUBLIC_URL/api/health"

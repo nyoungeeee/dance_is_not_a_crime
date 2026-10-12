@@ -1,4 +1,4 @@
-# B201·한입팟과 분리된 별도 Compose 프로젝트. 포트가 겹치지 않는지 배포 전 확인.
+# B201·한입팟과 분리된 별도 Compose 프로젝트. 포트·볼륨·프로젝트 이름이 겹치지 않는지 배포 전 확인.
 name: dance
 
 services:
@@ -6,6 +6,38 @@ services:
     build: .
     image: dance:latest
     restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      DATA_DIR: /data
+      TZ: Asia/Seoul
+    volumes:
+      - dance-data:/data
     # Cloudflare Tunnel이 이 포트로 넘긴다. 외부에 직접 노출하지 않는다.
     ports:
-      - "127.0.0.1:${HOST_PORT:-3220}:80"
+      - "127.0.0.1:${HOST_PORT:-3220}:3000"
+    # SQLite 단일 writer 전제: 레플리카를 늘리지 말 것
+    deploy:
+      replicas: 1
+
+  backup:
+    image: dance:latest
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    command: ["node", "dist/src/scripts/backup.js", "--loop"]
+    environment:
+      DATA_DIR: /data
+      BACKUP_DIR: /backups
+      BACKUP_KEEP: ${BACKUP_KEEP:-28}
+      BACKUP_INTERVAL_HOURS: ${BACKUP_INTERVAL_HOURS:-3}
+      TZ: Asia/Seoul
+    volumes:
+      - dance-data:/data:ro
+      - ${BACKUP_HOST_DIR:-./backups}:/backups
+
+volumes:
+  dance-data:

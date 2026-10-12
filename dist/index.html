@@ -6,13 +6,12 @@
   <meta name="description" content="춤은 불법이 아니다 슬로건 공동구매 주문. 경기인디뮤직페스티벌 현장 수령. 세종보헤미안뮤직페스티벌 수령은 추후 오픈 예정.">
   <meta property="og:title" content="춤은 불법이 아니다 · 슬로건 공동구매">
   <meta property="og:description" content="경기인디뮤직페스티벌 현장 수령 공동구매 · 세종보헤미안뮤직페스티벌 추후 오픈 예정">
-  <meta property="og:image" content="https://dance-is-not-a-crime.eunwhoa.chatgpt.site/assets/slogan.png">
+  <meta property="og:image" content="https://dance-is-not-a-crime.b201.kr/assets/slogan.png">
   <title>춤은 불법이 아니다 | 슬로건 공동구매</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%23161616'/%3E%3Ctext x='32' y='48' text-anchor='middle' font-size='49' fill='%23d7fa61'%3E✳︎%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/styles.css?v=29"><script type="module" src="/app.js?v=23"></script><script type="module" src="/music.js?v=26"></script>
+  <link rel="stylesheet" href="/styles.css?v=30"><script type="module" src="/app.js?v=24"></script><script type="module" src="/music.js?v=26"></script>
 </head>
 <body>
-  <div class="preview-bar">디자인 시안 <span>카카오 인증과 실제 주문 접수·입금 확인은 연결 전입니다.</span></div>
   <div class="header-region">
   <header class="header wrap">
     <a href="#" class="brand" aria-label="춤은 불법이 아니다 홈"><span class="brand-star" aria-hidden="true"><svg class="star-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1.5v21M1.5 12h21M4.6 4.6l14.8 14.8M19.4 4.6 4.6 19.4" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="butt"/></svg></span><span>춤은 불법이 아니다<small>DANCE IS NOT A CRIME</small></span></a>
@@ -21,8 +20,9 @@
       <button class="login-button" id="header-login" data-action="login">카카오 로그인</button>
       <button class="account-button" id="account-button" aria-expanded="false" aria-controls="account-menu" hidden><span id="header-nickname"></span><span class="chevron" aria-hidden="true"></span></button>
       <div class="account-menu" id="account-menu" aria-label="계정 메뉴" hidden>
-        <p><span id="menu-nickname"></span><small>미리보기 계정</small></p>
+        <p><span id="menu-nickname"></span><small>카카오 계정</small></p>
         <button data-action="my">내 주문</button><button data-action="message">문의 메시지 <span class="inquiry-badge" data-inquiry-count hidden></span></button>
+        <button data-action="admin" id="admin-menu-item" hidden>운영자 화면</button>
         <button data-action="nickname-edit">닉네임 수정</button>
         <button data-action="logout">로그아웃</button>
         <button class="withdraw-menu" data-action="withdraw-confirm">회원탈퇴</button>
@@ -74,18 +74,18 @@
           <fieldset class="field"><legend>수령 행사 <span class="required">필수</span></legend><div class="event-options"><label><input type="radio" name="event" value="inmufe" required><span><strong>경기인디뮤직페스티벌</strong><small>10/17(토) · 10/18(일)</small></span></label><label class="event-coming" aria-disabled="true"><input type="radio" name="event" value="sejong" disabled><span><span class="event-name-row"><strong>세종보헤미안뮤직페스티벌</strong><em class="coming-soon">(추후 오픈 예정)</em></span><small>10/30(금) · 10/31(토) · 11/1(일)</small></span></label></div><p class="field-hint">선택한 행사에서 직접 수령해주세요. 택배는 제공하지 않아요.</p></fieldset>
           <fieldset class="field"><legend>수령일 <span class="required">필수</span></legend><div class="pickup-days" id="pickup-date-options" aria-live="polite"><p class="field-hint">수령할 행사를 먼저 선택해주세요.</p></div><p class="field-hint">선택한 날짜는 내 주문에서도 확인할 수 있어요.</p></fieldset>
           <div class="field payer-field"><label for="payer-name">입금자명 <span class="required">필수</span></label><input id="payer-name" name="payerName" autocomplete="off" placeholder="실제 입금할 이름" required maxlength="80"><p class="field-hint">닉네임과 달라도 괜찮아요. 입금 내역과 대조할 이름을 입력해주세요.</p></div>
-          <div class="order-price-row"><span>주문 금액</span><strong id="order-total" aria-live="polite">5,000원</strong></div><label class="consent"><input id="consent" type="checkbox" required><span>주문 수량과 수령 행사·날짜를 확인했으며, 현재는 실제 접수가 아닌 미리보기임을 확인했어요.</span></label>
+          <div class="order-price-row"><span>주문 금액</span><strong id="order-total" aria-live="polite">5,000원</strong></div><label class="consent"><input id="consent" type="checkbox" required><span>주문 수량과 수령 행사·날짜, 입금자명을 확인했어요.</span></label>
           <button class="button kakao submit-button" type="submit" id="submit-order"><svg id="kakao-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3C6.5 3 2 6.4 2 10.6c0 2.7 1.8 5 4.5 6.4l-.9 3.5 4-2.4c.8.1 1.6.2 2.4.2 5.5 0 10-3.5 10-7.7S17.5 3 12 3Z"/></svg><span id="submit-label">카카오 로그인하고 주문서 작성</span></button>
-          <p class="auth-note">현재는 미리보기입니다. 실제 카카오 인증·주문 접수·입금 확인은 진행되지 않아요.</p>
-          <div class="saved-notice" id="saved-notice" hidden><p><strong>주문서가 저장되어 있어요.</strong><span>미리보기 주문 · 이 브라우저에만 저장</span></p><button class="text-button" type="button" data-action="my">확인</button></div>
+          <p class="auth-note">카카오에서는 회원번호만 받아요. 주문은 운영자가 입금을 확인한 뒤 확정돼요.</p>
+          <div class="saved-notice" id="saved-notice" hidden><p><strong>접수된 주문이 있어요.</strong><span id="saved-status"></span></p><button class="text-button" type="button" data-action="my">확인</button></div>
         </form>
       </div>
     </section>
     <section class="guide-section wrap" id="how" aria-labelledby="guide-title"><h2 id="guide-title">주문·제작 일정</h2><ol class="process"><li><span>10/13 화요일</span><h3>22:00 주문 마감</h3><p>수량과 수령 행사를 선택하고 주문서를 제출해주세요.</p></li><li><span>10/13 화요일</span><h3>23:59 입금 마감</h3><p>운영자가 입금자명과 금액을 대조하고, 발주 전에 입금 내역을 최종 확인해요.</p></li><li><span>10/14 수요일</span><h3>오전 업체 발주</h3><p>입금 확인된 주문을 취합해 제작업체에 발주할 예정이에요.</p></li><li><span>10/16 금요일</span><h3>상품 도착 예정</h3><p>운영자가 상품을 받은 뒤, 선택한 행사에서 현장 수령을 진행해요.</p></li></ol></section>
-    <section class="faq-section wrap" aria-labelledby="faq-title"><h2 id="faq-title">주문 전 확인</h2><div class="faq-list"><details><summary>주문은 언제까지 받나요?<span>+</span></summary><p>10/13(화) 22:00까지 주문을 받을 예정이에요. 마감 후 입금 내역을 확인하고 10/14(수) 오전에 발주할 계획이에요. 입금은 10/13(화) 23:59까지 완료해주세요.</p></details><details><summary>어디서 수령할 수 있나요?<span>+</span></summary><p>경기인디뮤직페스티벌은 10/17(토)·10/18(일) 중 수령일을 선택할 수 있어요. 세종보헤미안뮤직페스티벌 수령은 추후 오픈 예정이며 현재 선택할 수 없어요. 택배는 진행하지 않아요. 10/16(금)은 운영자의 상품 도착 예정일이며, 현장 수령 시간과 장소는 별도로 안내할 예정이에요.</p></details><details><summary>주문서 제출만 하면 주문이 확정되나요?<span>+</span></summary><p>주문서 제출 후 입금 안내를 확인해주세요. 실제 운영 시 운영자가 입금 내역을 확인한 뒤 주문을 확정해요. 현재 시안의 주문은 실제 접수가 아닙니다.</p></details><details><summary>주문을 수정하거나 취소할 수 있나요?<span>+</span></summary><p>미리보기에서는 마감 전 입금 대기 상태의 주문을 수정·취소할 수 있어요. 입금 확인을 요청한 주문은 취소 확인 요청으로 처리됩니다. 실제 취소·환불 기준과 문의 방법은 주문 오픈 전에 안내할 예정이에요.</p></details></div></section>
+    <section class="faq-section wrap" aria-labelledby="faq-title"><h2 id="faq-title">주문 전 확인</h2><div class="faq-list"><details><summary>주문은 언제까지 받나요?<span>+</span></summary><p>10/13(화) 22:00까지 주문을 받을 예정이에요. 마감 후 입금 내역을 확인하고 10/14(수) 오전에 발주할 계획이에요. 입금은 10/13(화) 23:59까지 완료해주세요.</p></details><details><summary>어디서 수령할 수 있나요?<span>+</span></summary><p>경기인디뮤직페스티벌은 10/17(토)·10/18(일) 중 수령일을 선택할 수 있어요. 세종보헤미안뮤직페스티벌 수령은 추후 오픈 예정이며 현재 선택할 수 없어요. 택배는 진행하지 않아요. 10/16(금)은 운영자의 상품 도착 예정일이며, 현장 수령 시간과 장소는 별도로 안내할 예정이에요.</p></details><details><summary>주문서 제출만 하면 주문이 확정되나요?<span>+</span></summary><p>주문서 제출 후 입금 안내를 확인해주세요. 운영자가 입금 내역을 확인한 뒤 주문을 확정해요.</p></details><details><summary>주문을 수정하거나 취소할 수 있나요?<span>+</span></summary><p>마감 전 입금 대기 상태의 주문은 내 주문에서 직접 수정·취소할 수 있어요. 입금 확인을 요청한 뒤나 마감 후에는 취소 요청을 남기면 운영자가 입금 내역을 확인하고 취소·환불을 처리해요. 궁금한 점은 문의 메시지로 남겨주세요.</p></details></div></section>
     <div class="share-row wrap"><p>주문 링크</p><button class="text-button" data-action="share">주문 링크 복사</button></div>
   </main>
-  <footer class="footer wrap"><p>춤은 불법이 아니다 · 슬로건 공동구매</p><button class="text-button" data-action="about">미리보기 안내</button></footer>
+  <footer class="footer wrap"><p>춤은 불법이 아니다 · 슬로건 공동구매</p><button class="text-button" data-action="about">이용 안내</button></footer>
   <div class="mobile-cta"><div class="music-player" aria-label="음악 플레이어"><div class="music-controls"><button type="button" id="music-prev" aria-label="이전 곡"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h2v14H5zM19 5v14L8 12z"/></svg></button><button type="button" id="music-toggle" aria-label="음악 재생" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path id="music-toggle-icon" d="M7 5l12 7-12 7z"/></svg></button><button type="button" id="music-next" aria-label="다음 곡"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 5h2v14h-2zM5 5l11 7-11 7z"/></svg></button><span class="music-time" id="music-time" aria-label="재생 시간">0:00 / 2:18</span></div><div class="music-info"><span class="music-title" id="music-title">Uptown Jam</span><span class="music-artist" id="music-artist">Nick Petrov</span></div><span id="music-status" class="sr-only" role="status"></span><audio id="music-audio" preload="auto"></audio></div><a href="#participate">주문서 작성</a></div>
   <button type="button" class="inquiry-launcher" data-action="message" aria-label="운영자에게 문의"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v12H9l-5 4V4Z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg><span>문의</span><span class="inquiry-badge" data-inquiry-count hidden></span></button>
   <dialog id="modal" aria-labelledby="modal-title" closedby="closerequest"><div class="modal-shell"><button class="modal-close" aria-label="닫기">×</button><div id="modal-content"></div></div></dialog>

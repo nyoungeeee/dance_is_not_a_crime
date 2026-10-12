@@ -1,56 +1,103 @@
 # 춤은 불법이 아니다 — 슬로건 공동구매
 
-현재 배포 화면을 그대로 이어서 개발할 수 있는 전체 소스입니다. HTML / CSS / JavaScript ES modules로 만든 정적 사이트이며, 별도 빌드나 패키지 설치가 필요하지 않습니다. 슬로건 이미지와 5개 MP3도 포함되어 있습니다.
+주문 페이지(`dist/`, 순수 HTML/CSS/JS ES modules)와 카카오 로그인·주문·문의·운영자 API 서버(`server/`, NestJS + Prisma + SQLite)입니다. 서버가 `/api`와 `dist/` 정적 화면을 한 컨테이너에서 함께 제공합니다.
 
-## 실행
+운영: https://dance-is-not-a-crime.b201.kr
 
-압축을 풀고 이 폴더에서 실행하세요.
+## 구조
 
-```sh
-python3 -m http.server 5173 --directory dist
+```
+dist/                 화면(빌드 없음). 서버가 그대로 제공
+  index.html          주문 페이지
+  app.js              계정·주문·문의 화면 동작. 상태는 /api/me 기준
+  api.mjs             API 호출(쓰기 요청에 x-dance: 1 헤더)
+  admin.html/js/css   운영자 화면(/admin). 권한은 서버가 검사
+  group-buy.mjs       가격·마감·계좌·상태 라벨(화면 표시용)
+  account-state.mjs   행사·수령일·닉네임·주문 입력 검증(화면 안내용)
+  music.js, skeletons.js, styles.css, assets/
+server/               NestJS + Prisma 7(SQLite, better-sqlite3 어댑터)
+  prisma/schema.prisma  User, Session, Order, OrderLog, Message
+  src/common/group-buy.ts  마감·가격·수량·행사 규칙(서버가 기준)
+  src/auth/            카카오 OAuth, 세션, 권한(AuthGuard/AdminGuard)
+  src/orders/ src/messages/ src/me/ src/admin/
+  test/api.test.ts     모의 로그인으로 전체 흐름 검사
+brand/                카카오 앱 아이콘
 ```
 
-브라우저에서 http://localhost:5173 을 엽니다. `/dist`를 웹 루트로 제공해야 합니다. `index.html`을 파일로 직접 열면 ES module과 `/assets/...` 경로가 정상 작동하지 않습니다.
+## 로컬 실행
 
-## 파일
+```sh
+cd server
+npm ci
+npm run migrate                      # server/.data/dance.db 생성
+AUTH_MOCK=1 ADMIN_KAKAO_IDS=mock-9999 PORT=3000 PUBLIC_URL=http://localhost:3000 npm run dev
+```
 
-- `dist/index.html`: 페이지와 모달 기본 구조
-- `dist/styles.css`: 다크/라임 디자인, 모바일 배치, 모달 정렬, 애니메이션
-- `dist/app.js`: 주문·계정·문의 화면 동작
-- `dist/account-state.mjs`: 미리보기 계정/주문 저장 및 검증
-- `dist/group-buy.mjs`: 가격·마감·계좌·카운트다운
-- `dist/messages.mjs`: 브라우저에 저장하는 미리보기 대화
-- `dist/music.js`: 음악 재생·반복·자동재생 시도·BPM 주기
-- `dist/skeletons.js`: 원본 이미지의 해골/글자 영역을 분리해 움직이는 레이어
-- `dist/assets/slogan.png`: 슬로건 원본
-- `dist/assets/music/`: 5개 음원
+http://localhost:3000 을 엽니다. `AUTH_MOCK=1`이면 카카오 대신 모의 로그인 화면이 나오고, 카카오 회원번호를 직접 입력합니다(`9999`로 로그인하면 운영자). 운영(`NODE_ENV=production`)에서는 `AUTH_MOCK`이 거부됩니다.
 
-## 현재 구현 상태
+실제 카카오로 로컬 테스트하려면 `server/.env.local`에 `KAKAO_REST_API_KEY` 등을 넣고(`AUTH_MOCK` 없이), Kakao Developers Redirect URI에 `http://localhost:3000/api/auth/kakao/callback`을 등록합니다.
 
-디자인과 브라우저 내 체험 흐름까지 구현되어 있습니다. **카카오 인증, 실제 주문 접수, 서버 DB, 운영자 인증, 실제 문의 전달, 입금 확인은 연결되어 있지 않습니다.** localStorage / sessionStorage 데이터는 사용자 브라우저에만 남습니다. 문의의 운영자 답변 버튼은 권한이 있는 실제 관리자 기능이 아니라 시안 체험용입니다.
+테스트: `cd server && npm test`
 
-서버와 인증을 연결하기 전에는 실제 주문을 받거나 입금을 유도하지 마세요. 현재 미리보기 고지는 실제 기능 연결 및 검증 후 정리해야 합니다.
+## 서버 규칙
 
-## 이어서 작업
+- 카카오에서는 회원번호(`id`)만 받는다. 동의항목 없음. 토큰은 저장하지 않는다.
+- 세션: 쿠키(`dnc_sid`, httpOnly)에는 무작위 토큰, DB에는 HMAC 해시. 14일. 매 요청 DB에서 확인하고 탈퇴 계정은 거부.
+- 쓰기 요청은 `x-dance: 1` 헤더 + Origin이 `PUBLIC_URL`인지 확인(CSRF 차단).
+- 주문: 마감(10/13 22:00 KST)·수량(1~20)·가격(5,000원)·행사·수령일·입금자명을 서버에서 검사. 클라이언트가 보낸 가격·상태는 무시. 사용자당 진행 중 주문 1개.
+- 상태: `payment_pending`(입금 대기) → 사용자 `verification_requested`(입금 확인 요청) → 운영자 `paid`(입금 확인 완료) → `picked_up`(수령 완료). 취소는 마감 전 입금 대기면 즉시 `cancelled`, 그 외에는 `cancel_requested` → 운영자가 `cancelled`/`refunded`.
+- 사용자의 입금 확인 요청만으로는 확정되지 않는다. `paid`는 운영자만 바꿀 수 있다. 모든 상태 변경은 `OrderLog`에 남는다.
+- 문의: 500자, 10분에 20개 제한. 운영자가 열면 사용자 메시지 읽음, 사용자가 열면 답변 읽음.
+- 운영자: `ADMIN_KAKAO_IDS`에 있는 카카오 회원번호만. 화면의 버튼이나 클라이언트 값으로 권한을 주지 않는다.
+- 탈퇴: 진행 중 주문(취소·환불·수령 완료 이외)이 있으면 거부. 카카오 회원번호 삭제, 닉네임 `탈퇴회원_N`, 문의 대화·세션 삭제, 카카오 연결 해제(Admin 키). 주문 기록은 입금 대조·환불 확인용으로 보관.
 
-Codex 또는 Claude Code에서 이 폴더를 열고 `AGENTS.md`, `REQUIREMENTS.md`, `HANDOFF.md`를 먼저 읽게 하세요. 현재 단계, 확정 요구사항, 남은 작업이 적혀 있습니다.
+## Kakao Developers 설정
 
-정적 화면만 배포할 때는 `dist/`를 배포 루트로 사용하세요. ChatGPT Sites의 관리 설정과 인증 정보는 이 압축에 포함하지 않았습니다. 다른 호스팅으로 옮길 때의 환경과 배포 설정은 별도로 구성해야 합니다.
+1. 플랫폼 → Web 사이트 도메인: `https://dance-is-not-a-crime.b201.kr`
+2. 카카오 로그인 활성화, Redirect URI: `https://dance-is-not-a-crime.b201.kr/api/auth/kakao/callback`
+3. 동의항목: 아무것도 켜지 않는다.
+4. 보안 → Client Secret 사용 시 `KAKAO_CLIENT_SECRET`
+5. 앱 키 → REST API 키 `KAKAO_REST_API_KEY`, Admin 키 `KAKAO_ADMIN_KEY`
+
+로그인 실패 시 서버 로그의 `카카오 로그인 실패: ... KOE???`를 본다. KOE006 Redirect URI 불일치, KOE101 REST API 키 오류, KOE010 Client Secret 불일치.
+
+## 운영자 등록
+
+1. 운영자가 사이트에서 카카오 로그인한다.
+2. 같은 브라우저로 `https://dance-is-not-a-crime.b201.kr/api/me/kakao-id` 를 열어 `kakaoId`를 확인한다.
+3. 서버 `~/dance/.env`의 `ADMIN_KAKAO_IDS`에 넣고(쉼표로 여러 명) `docker compose up -d`로 다시 띄운다.
+4. 계정 메뉴에 "운영자 화면"이 생기고 `/admin`에서 입금 대조·상태 변경·발주 집계·CSV·문의 답변을 한다.
 
 ## 배포 (한입팟과 같은 b201 서버, 별도 Compose 프로젝트)
 
-`dist/`를 nginx 컨테이너로 그대로 제공한다. 빌드·환경 변수 없음.
-
 ```bash
-git clone https://github.com/nyoungeeee/dance_is_not_a_crime.git ~/dance && cd ~/dance
-docker compose up -d --build        # 127.0.0.1:3220 (HOST_PORT로 변경 가능)
-curl -fsS http://127.0.0.1:3220/healthz
+cd ~/dance
+cp .env.example .env      # PUBLIC_URL, SESSION_SECRET(openssl rand -hex 32), 카카오 키, ADMIN_KAKAO_IDS
+mkdir -p backups && sudo chown 1000:1000 backups   # 컨테이너는 node(uid 1000)로 실행
+docker compose up -d --build
+curl -fsS http://127.0.0.1:3220/api/health
 ```
 
-- 프로젝트 이름 `dance`. 앱은 `127.0.0.1:${HOST_PORT:-3220}`에만 열린다. B201·한입팟(3210) 포트와 겹치지 않는지 확인할 것
-- Cloudflare Tunnel `b201`에 공개 호스트 `dance-is-not-a-crime.b201.kr` → `http://localhost:3220`을 추가한다
-- `scripts/deploy.sh`: `origin/main`으로 fast-forward → 재빌드 → `/healthz` 확인. 실패 시 직전 커밋으로 되돌린다
-- `.github/workflows/ci-cd.yml`: PR·main 푸시마다 Docker 빌드와 응답 확인. 저장소 변수 `DEPLOY_ENABLED=true`일 때만 main에서 `deploy` 잡이 서버의 `scripts/deploy.sh`를 실행한다
-- 접속 경로는 한입팟과 같다: Actions → `cloudflared access ssh` → `hanip-ssh.b201.kr` → 서버 `localhost:22`
-- 배포 키: 이 저장소 전용 키를 b201 `authorized_keys`에 `restrict,command="/home/b201/dance/scripts/deploy.sh"`로 등록한다
-- GitHub Secrets: `DEPLOY_SSH_KEY`, `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET`. Variables: `DEPLOY_ENABLED=true`. Environment: `production`
+- 프로젝트 이름 `dance`, 볼륨 `dance_dance-data`(SQLite). 앱은 `127.0.0.1:${HOST_PORT:-3220}`에만 열린다.
+- Cloudflare Tunnel `b201`의 Published application route `dance-is-not-a-crime.b201.kr` → `http://localhost:3220`.
+- 컨테이너가 시작할 때마다 `prisma migrate deploy`로 DB 마이그레이션을 적용한다.
+- SQLite는 writer가 하나여야 하므로 레플리카를 늘리지 않는다.
+- `scripts/deploy.sh`: `.env` 확인 → 배포 전 백업 → `origin/main`으로 fast-forward → 재빌드 → `/api/health` 확인. 실패 시 직전 커밋으로 되돌린다.
+- `.github/workflows/ci-cd.yml`: PR·main 푸시마다 서버 테스트와 Docker 확인. 저장소 변수 `DEPLOY_ENABLED=true`일 때만 main에서 `deploy` 잡이 서버의 `scripts/deploy.sh`를 실행한다(접속: Actions → `cloudflared access ssh` → `hanip-ssh.b201.kr`, 배포 키는 `restrict,command="/home/b201/dance/scripts/deploy.sh"`, Secrets `DEPLOY_SSH_KEY`·`CF_ACCESS_CLIENT_ID`·`CF_ACCESS_CLIENT_SECRET`).
+
+### 백업·복원
+
+`backup` 서비스가 `BACKUP_INTERVAL_HOURS`(기본 3시간)마다 `./backups/dance-YYYYMMDD-HHMM.db`를 만들고 `integrity_check`로 검사한다. 최근 `BACKUP_KEEP`(기본 28)개만 남긴다.
+
+```bash
+docker compose exec web node dist/src/scripts/backup.js        # 즉시 백업
+# 복원
+docker compose stop web
+docker run --rm -v dance_dance-data:/data -v "$PWD/backups":/b alpine sh -c 'cp /b/<파일> /data/dance.db && chown 1000:1000 /data/dance.db'
+docker compose start web
+```
+
+## 화면 수정 시
+
+- HTML과 module import의 `?v=` 값은 파일별로 다를 수 있다. 수정한 파일은 그 파일을 가리키는 URL의 버전을 올린다.
+- 가격·마감·행사를 바꾸면 `server/src/common/group-buy.ts`와 `dist/group-buy.mjs`·`dist/account-state.mjs`를 함께 바꾼다. 서버 값이 기준이다.

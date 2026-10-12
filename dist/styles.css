@@ -127,7 +127,8 @@ h2{font-size:26px;letter-spacing:-1px;margin:0;font-weight:800;line-height:1.35}
 .kakao{background:#fee500;color:#1b1900}
 .kakao:hover{background:#f2da00}
 .submit-button{margin-top:20px;width:100%;font-size:12px}
-.submit-button svg{width:18px;height:18px;fill:currentColor}
+.submit-button svg,a.button.kakao svg{width:18px;height:18px;fill:currentColor}
+a.button{text-decoration:none}
 .auth-note{font-size:10px;color:#b1bba0;line-height:1.65;margin:11px 0 0;text-align:center}
 .saved-notice{display:flex;justify-content:space-between;align-items:center;gap:12px;background:#2a3221;padding:12px;margin-top:16px;border:1px solid #4a5839;border-radius:3px}
 .saved-notice p{margin:0;font-size:11px}
