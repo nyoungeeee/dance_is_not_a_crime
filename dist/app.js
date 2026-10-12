@@ -278,7 +278,8 @@ function paymentGuide(id) {
     cancel_requested: '운영자가 취소와 환불 여부를 확인하고 있어요.',
     picked_up: '수령이 완료된 주문이에요.',
   }[record.status] ?? '';
-  openModal(`<div class="modal-label">입금 안내</div><h2 id="modal-title">${pending ? '주문서 제출 다음 단계' : '입금 안내'}</h2>${orderProgress(record)}${responseRows(record)}<div class="payment-details"><p class="payment-bank-name"><strong>${escapeHTML(GROUP_BUY.bankAccount.bank)}</strong><span>예금주 ${escapeHTML(GROUP_BUY.bankAccount.holder)}</span></p><p class="payment-account-number">${escapeHTML(GROUP_BUY.bankAccount.number)}</p><div class="payment-copy-buttons"><button class="text-button" data-action="copy-account" data-id="${id_}">계좌번호 복사</button><button class="text-button" data-action="copy-amount" data-id="${id_}">입금 금액 복사</button></div><p class="payment-deadline">입금 기한: ${GROUP_BUY.paymentDeadlineLabel}<br>주문 마감: ${GROUP_BUY.ordersCloseLabel}</p></div><p>${guide}</p><button class="button primary" data-action="payment-request" data-id="${id_}" ${pending ? '' : 'disabled'}>${PAYMENT_BUTTON[record.status] ?? ORDER_STATUS[record.status]}</button><button class="button secondary" data-action="order-detail" data-id="${id_}">주문 내역</button>`);
+  const title = {payment_pending:'입금해주세요',verification_requested:'입금 확인 중이에요',paid:'입금이 확인됐어요',cancel_requested:'취소 확인 중이에요',picked_up:'수령이 완료됐어요'}[record.status] ?? '입금 계좌';
+  openModal(`<div class="modal-label">입금 계좌</div><h2 id="modal-title">${title}</h2>${orderProgress(record)}${responseRows(record)}<div class="payment-details"><p class="payment-bank-name"><strong>${escapeHTML(GROUP_BUY.bankAccount.bank)}</strong><span>예금주 ${escapeHTML(GROUP_BUY.bankAccount.holder)}</span></p><p class="payment-account-number">${escapeHTML(GROUP_BUY.bankAccount.number)}</p><div class="payment-copy-buttons"><button class="text-button" data-action="copy-account" data-id="${id_}">계좌번호 복사</button><button class="text-button" data-action="copy-amount" data-id="${id_}">입금 금액 복사</button></div><p class="payment-deadline">입금 기한: ${GROUP_BUY.paymentDeadlineLabel}<br>주문 마감: ${GROUP_BUY.ordersCloseLabel}</p></div><p>${guide}</p><button class="button primary" data-action="payment-request" data-id="${id_}" ${pending ? '' : 'disabled'}>${PAYMENT_BUTTON[record.status] ?? ORDER_STATUS[record.status]}</button><button class="button secondary" data-action="order-detail" data-id="${id_}">주문 내역</button>`);
 }
 function addPickupDate(id) {
   const record = findOrder(id);
@@ -307,7 +308,7 @@ async function copyPaymentValue(kind, id) {
   const label = isAccount ? '계좌번호' : '입금 금액';
   try {await navigator.clipboard.writeText(value);toast(`${label}을 복사했어요.`);}
   catch {
-    openModal(`<div class="modal-label">입금 안내</div><h2 id="modal-title">${label} 복사</h2><p>아래 값을 선택해 복사해주세요.</p><input id="payment-copy-value" class="share-link" readonly aria-label="${label}"><button class="button secondary" data-action="order" data-id="${escapeHTML(id)}">입금 안내로 돌아가기</button>`);
+    openModal(`<div class="modal-label">입금 계좌</div><h2 id="modal-title">${label} 복사</h2><p>아래 값을 선택해 복사해주세요.</p><input id="payment-copy-value" class="share-link" readonly aria-label="${label}"><button class="button secondary" data-action="order" data-id="${escapeHTML(id)}">입금 안내로 돌아가기</button>`);
     $('#payment-copy-value').value=value;$('#payment-copy-value').focus();$('#payment-copy-value').select();
   }
 }
