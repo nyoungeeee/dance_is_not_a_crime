@@ -123,30 +123,28 @@ function renderPickupStats() {
   const todays = live.filter(o => o.pickupDate === today), done = o => o.status === 'picked_up';
   const waiting = new Set(todays.filter(o => !done(o)).map(o => o.userId)).size;
   $('#pk-stats').innerHTML = [
-    [`오늘 ${dayLabel(today)} 수령분 전달`, `${sumQty(todays.filter(done))} / ${sumQty(todays)}개`, `남은 사람 ${waiting}명`],
-    ['전체 전달', `${sumQty(live.filter(done))} / ${sumQty(live)}개`, ''],
-    ['입금 미확인 (전달 금지)', `${orders.filter(o => PENDING.includes(o.status)).length}건`, ''],
-  ].map(([k, v, sub]) => `<div><span>${esc(k)}</span><strong>${esc(v)}</strong>${sub ? `<span>${esc(sub)}</span>` : ''}</div>`).join('');
+    [`오늘 ${dayLabel(today)}`, `${sumQty(todays.filter(done))}/${sumQty(todays)}개`, `전달 · 남은 ${waiting}명`],
+    ['전체', `${sumQty(live.filter(done))}/${sumQty(live)}개`, '전달'],
+    ['입금 미확인', `${orders.filter(o => PENDING.includes(o.status)).length}건`, '전달 금지'],
+  ].map(([k, v, sub]) => `<div><span>${esc(k)}</span><strong>${esc(v)}</strong><small>${esc(sub)}</small></div>`).join('');
 }
+/** 색은 두 가지만: 라임 = 누를 버튼, 빨강 = 주면 안 되는 것. 나머지는 흰색·회색. */
 function pickupCard(p) {
   const today = kstDay();
   const line = o => {
-    const note = o.status === 'picked_up' ? `수령 완료 · ${time(pickedAt(o) ?? o.updatedAt)}`
-      : PENDING.includes(o.status) ? '입금 미확인 · 전달 금지'
-      : o.status === 'paid' ? (o.pickupDate && o.pickupDate !== today ? `수령일 ${dayLabel(o.pickupDate)}` : '전달할 주문')
-      : `${ORDER_STATUS[o.status] ?? o.status} · 전달 안 함`;
-    return `<li class="pk-o s-${esc(o.status)}"><code>${idHTML(o.id)}</code><strong>${o.quantity}개</strong><span>${esc(pickupDateLabel(o.event, o.pickupDate))}</span><em>${esc(note)}</em></li>`;
+    const [cls, note] = o.status === 'picked_up' ? ['is-done', `수령 완료 · ${time(pickedAt(o) ?? o.updatedAt)}`]
+      : PENDING.includes(o.status) ? ['is-stop', '입금 미확인 · 전달 금지']
+      : o.status === 'paid' ? (o.pickupDate !== today ? ['is-other', '수령일이 오늘이 아님'] : ['', ''])
+      : ['is-done', `${ORDER_STATUS[o.status] ?? o.status} · 전달 안 함`];
+    return `<li class="pk-line ${cls}"><code>${idHTML(o.id)}</code><span class="pk-date">${esc(pickupDateLabel(o.event, o.pickupDate))}</span><span class="pk-qty">${o.quantity}개</span>${note ? `<span class="pk-note">${esc(note)}</span>` : ''}</li>`;
   };
-  const otherDay = p.give.filter(o => o.pickupDate !== today);
-  const qty = sumQty(p.give);
-  return `<article class="pk-card ${qty ? '' : 'is-off'}">
-    <header><span class="muted small">입금자명</span><strong class="pk-payer">${esc(p.payers.join(' / '))}</strong><span class="muted">닉네임 ${esc(p.nickname)}</span></header>
-    <ul>${p.orders.map(line).join('')}</ul>
-    ${otherDay.length ? `<p class="pk-warn">수령일이 오늘이 아닌 주문이에요 (${esc([...new Set(otherDay.map(o => dayLabel(o.pickupDate)))].join(', '))}). 확인하고 전달하세요.</p>` : ''}
-    ${p.unpaid.length ? `<p class="pk-stop">입금 미확인 ${sumQty(p.unpaid)}개는 전달하지 마세요.</p>` : ''}
-    ${qty ? `<button class="primary pk-give" data-give="${p.userId}">${qty}개 전달 완료</button>`
-      : p.done.length ? `<p class="pk-done">이미 수령함 · ${esc(time(pickedAt(p.done.at(-1)) ?? p.done.at(-1).updatedAt))}</p>`
-      : '<p class="pk-stop">전달할 주문이 없어요.</p>'}
+  const qty = sumQty(p.give), last = p.done.at(-1);
+  return `<article class="pk-card">
+    <header class="pk-head"><strong>${esc(p.payers.join(' / '))}</strong><span>${esc(p.nickname)}</span></header>
+    <ul class="pk-lines">${p.orders.map(line).join('')}</ul>
+    ${qty ? `<button class="primary pk-action" data-give="${p.userId}">${qty}개 전달 완료</button>`
+      : last ? `<p class="pk-action is-stop">이미 수령함 · ${esc(time(pickedAt(last) ?? last.updatedAt))}</p>`
+      : '<p class="pk-action">전달할 주문이 없어요</p>'}
   </article>`;
 }
 function renderPickup() {
@@ -285,6 +283,7 @@ function openTab(tab) {
   return TABS[tab]().catch(e => toast(e.message));
 }
 document.querySelectorAll('[data-tab]').forEach(t => t.addEventListener('click', () => openTab(t.dataset.tab)));
+window.addEventListener('hashchange', () => {const tab = location.hash.slice(1);if (Object.hasOwn(TABS, tab) && $('#gate').hidden) openTab(tab);});
 
 (async () => {
   const me = await api('GET', '/api/me').catch(() => ({user:null}));
