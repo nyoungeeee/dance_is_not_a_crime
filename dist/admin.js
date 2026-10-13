@@ -248,7 +248,8 @@ $('#pk-undo').addEventListener('click', async e => {
   $('#pk-q').focus();
 });
 
-// 인쇄용 명단: 그날 수령분을 입금자명 가나다순으로, 체크 칸과 함께. 인터넷이 끊겼을 때 쓰는 종이 백업.
+// 인쇄용 명단: 그날 수령분을 수량 많은 순 → 닉네임 순으로, 체크 칸과 함께. 인터넷이 끊겼을 때 쓰는 종이 백업.
+// 입금 미확인 주문은 같은 표에 회색 줄로(전달 금지). 수량이 바뀌는 줄에 두 줄 선을 그어 묶음을 나눈다.
 for (const e of Object.values(EVENTS).filter(e => e.available)) for (const d of e.dates) $('#pk-print-date').insertAdjacentHTML('beforeend', `<option value="${d.value}">${esc(e.name)} ${d.label}</option>`);
 {
   const today = kstDay(), opt = [...$('#pk-print-date').options].find(o => o.value >= today);
@@ -257,21 +258,23 @@ for (const e of Object.values(EVENTS).filter(e => e.available)) for (const d of 
 $('#pk-print').addEventListener('click', () => {
   const date = $('#pk-print-date').value;
   const ofDay = orders.filter(o => o.pickupDate === date);
-  const people = [...new Set(ofDay.map(o => o.userId))].map(id => {
+  const rows = [...new Set(ofDay.map(o => o.userId))].flatMap(id => {
     const mine = ofDay.filter(o => o.userId === id);
-    return {payer:[...new Set(mine.map(o => o.payerName))].join(' / '), nickname:mine.at(-1).nickname,
-      give:mine.filter(o => ['paid','picked_up'].includes(o.status)), unpaid:mine.filter(o => PENDING.includes(o.status))};
-  }).sort((a, b) => a.payer.localeCompare(b.payer, 'ko'));
-  const rows = list => list.map(p => {
-    const done = p.give.filter(o => o.status === 'picked_up');
-    return `<tr><td class="box">${done.length === p.give.length ? '✔' : ''}</td><td>${esc(p.payer)}</td><td>${esc(p.nickname)}</td><td>${p.give.map(o => idHTML(o.id)).join('<br>')}</td><td class="num">${sumQty(p.give)}</td><td>${done.length ? `수령 ${esc(time(pickedAt(done.at(-1)) ?? done.at(-1).updatedAt))}` : ''}</td></tr>`;
+    const who = {payer:[...new Set(mine.map(o => o.payerName))].join(' / '), nickname:mine.at(-1).nickname};
+    const give = mine.filter(o => ['paid','picked_up'].includes(o.status)), unpaid = mine.filter(o => PENDING.includes(o.status));
+    return [give.length && {...who, list:give, unpaid:false}, unpaid.length && {...who, list:unpaid, unpaid:true}].filter(Boolean);
+  }).map(r => ({...r, qty:sumQty(r.list)}))
+    .sort((a, b) => b.qty - a.qty || a.nickname.localeCompare(b.nickname, 'ko') || a.unpaid - b.unpaid);
+  const body = rows.map((r, i) => {
+    const done = r.unpaid ? [] : r.list.filter(o => o.status === 'picked_up');
+    const note = r.unpaid ? '입금 미확인 · 전달 금지' : done.length ? `수령 ${time(pickedAt(done.at(-1)) ?? done.at(-1).updatedAt)}` : '';
+    const cls = [r.unpaid && 'unpaid', i && rows[i - 1].qty !== r.qty && 'qty-break'].filter(Boolean).join(' ');
+    return `<tr class="${cls}"><td class="box">${!r.unpaid && done.length === r.list.length ? '✔' : ''}</td><td>${esc(r.nickname)}</td><td>${esc(r.payer)}</td><td class="num">${r.qty}</td><td>${r.list.map(o => esc(o.id)).join(', ')}${note ? `<br>${esc(note)}` : ''}</td></tr>`;
   }).join('');
-  const givers = people.filter(p => p.give.length), unpaid = people.filter(p => p.unpaid.length);
-  const head = '<thead><tr><th class="box">✔</th><th>입금자명</th><th>닉네임</th><th>주문번호</th><th>수량</th><th>비고</th></tr></thead>';
+  const paid = rows.filter(r => !r.unpaid), unpaid = rows.filter(r => r.unpaid);
   $('#print-sheet').innerHTML = `<h1>춤은 불법이 아니다 · ${esc($('#pk-print-date').selectedOptions[0].textContent)} 수령 명단</h1>
-    <p>입금 확인 ${givers.length}명 · ${sumQty(givers.flatMap(p => p.give))}개 · 출력 ${esc(dayTime(new Date().toISOString()))} (이후 바뀐 내용은 화면이 기준)</p>
-    <table>${head}<tbody>${rows(givers)}</tbody></table>
-    ${unpaid.length ? `<h2>입금 미확인 · 전달 금지</h2><table><thead><tr><th>입금자명</th><th>닉네임</th><th>주문번호</th><th>수량</th></tr></thead><tbody>${unpaid.map(p => `<tr><td>${esc(p.payer)}</td><td>${esc(p.nickname)}</td><td>${p.unpaid.map(o => idHTML(o.id)).join('<br>')}</td><td class="num">${sumQty(p.unpaid)}</td></tr>`).join('')}</tbody></table>` : ''}`;
+    <p>입금 확인 ${paid.length}명 · ${sumQty(paid.flatMap(r => r.list))}개${unpaid.length ? ` / 입금 미확인(회색, 전달 금지) ${unpaid.length}명 · ${sumQty(unpaid.flatMap(r => r.list))}개` : ''} · 출력 ${esc(dayTime(new Date().toISOString()))} (이후 바뀐 내용은 화면이 기준)</p>
+    <table><thead><tr><th class="box">✔</th><th>닉네임</th><th>입금자명</th><th>수량</th><th>비고</th></tr></thead><tbody>${body}</tbody></table>`;
   window.print();
 });
 
