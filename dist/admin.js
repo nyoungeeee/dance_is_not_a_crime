@@ -142,16 +142,17 @@ function pickupCard(p) {
   return `<article class="pk-card">
     <header class="pk-head"><strong>${esc(p.payers.join(' / '))}</strong><span>${esc(p.nickname)}</span></header>
     <ul class="pk-lines">${p.orders.map(line).join('')}</ul>
-    ${qty ? `<button class="primary pk-action" data-give="${p.userId}">${qty}개 전달 완료</button>`
+    ${qty ? `<button class="primary pk-action" data-give="${p.userId}">${qty}개 전달 완료<kbd>Enter</kbd></button>`
       : last ? `<p class="pk-action is-stop">이미 수령함 · ${esc(time(pickedAt(last) ?? last.updatedAt))}</p>`
       : '<p class="pk-action">전달할 주문이 없어요</p>'}
   </article>`;
 }
 /**
- * 한 화면에 한 사람만. 주문번호 끝 4자리·주문번호 전체·입금자명이 정확히 맞으면 그 사람만(운영 데이터에서 서로 겹치지 않음),
- * 아니면 부분 일치. 여러 명이면 한 줄 후보 목록에서 골라 카드를 연다.
+ * 카드는 한 번에 한 사람만. 주문번호 끝 4자리·주문번호 전체·입금자명이 정확히 맞으면 그 사람만(운영 데이터에서 서로 겹치지 않음),
+ * 아니면 부분 일치. 여러 명이면 왼쪽 후보에서 ↑↓나 클릭으로 골라야 오른쪽에 카드가 뜬다(자동으로 고르지 않음).
  */
-let pickedUser = null;
+let pickedUser = null, shownPeople = [];
+const narrow = matchMedia('(max-width:900px)');
 function matchPeople(q) {
   const exact = orders.filter(o => norm(o.id).slice(-4) === q || norm(o.id) === q || norm(o.payerName) === q);
   const hits = exact.length ? exact : orders.filter(o => [o.id, o.payerName, o.nickname].some(v => norm(v).includes(q)));
@@ -159,23 +160,28 @@ function matchPeople(q) {
 }
 function candidate(p) {
   const [cls, label] = p.give.length ? ['', `${sumQty(p.give)}개 전달 가능`] : p.done.length ? ['is-stop', '이미 수령함'] : p.unpaid.length ? ['is-stop', '입금 미확인'] : ['', '전달할 주문 없음'];
-  return `<li><button data-pick="${p.userId}"><strong>${esc(p.payers.join(' / '))}</strong><span>${esc(p.nickname)}</span><em class="${cls}">${esc(label)}</em></button></li>`;
+  return `<li><button data-pick="${p.userId}" aria-selected="${p.userId === pickedUser}"><strong>${esc(p.payers.join(' / '))}</strong><em class="${cls}">${esc(label)}</em><span>${esc(p.nickname)}</span></button></li>`;
 }
 function renderPickup() {
   if (!$('#pk-stats')) return;
   renderPickupStats();
-  const q = norm($('#pk-q').value);
-  if (q.length < 2) {$('#pk-results').innerHTML = '<p class="muted">주문번호 끝 4자리나 입금자명을 입력하세요.</p>';return;}
-  const people = matchPeople(q);
-  if (!people.length) {$('#pk-results').innerHTML = '<p class="muted">찾는 주문이 없어요. 주문번호를 다시 확인해주세요.</p>';return;}
+  const q = norm($('#pk-q').value), list = $('#pk-list'), card = $('#pk-results');
+  const empty = text => `<p class="pk-empty">${text}</p>`;
+  const people = q.length < 2 ? [] : matchPeople(q);
   const one = people.length === 1 ? people[0] : people.find(p => p.userId === pickedUser);
-  if (one) {
-    $('#pk-results').innerHTML = (people.length > 1 ? `<button class="ghost pk-back" data-back>← 후보 ${people.length}명으로 돌아가기</button>` : '') + pickupCard(one);
-    return;
-  }
-  const shown = people.slice(0, 8);
-  $('#pk-results').innerHTML = `<p class="pk-count">${people.length}명이 찾아졌어요. 받을 사람을 고르세요.</p><ul class="pk-pick">${shown.map(candidate).join('')}</ul>`
-    + (people.length > shown.length ? `<p class="muted">${people.length - shown.length}명 더 있어요. 더 입력해서 좁혀주세요.</p>` : '');
+  shownPeople = people.length > 1 ? people.slice(0, 8) : [];
+  $('#pickup').classList.toggle('picking', Boolean(one && people.length > 1));
+  if (q.length < 2) list.innerHTML = '<p class="muted">주문번호 끝 4자리나 입금자명을 입력하세요.</p>';
+  else if (!people.length) list.innerHTML = '<p class="muted">찾는 주문이 없어요. 주문번호를 다시 확인해주세요.</p>';
+  else if (people.length === 1) list.innerHTML = '<p class="pk-count">1명 찾았어요.</p>';
+  else list.innerHTML = `<p class="pk-count">${people.length}명이 찾아졌어요. 받을 사람을 고르세요.</p><ul class="pk-pick">${shownPeople.map(candidate).join('')}</ul>`
+    + (people.length > shownPeople.length ? `<p class="muted">${people.length - shownPeople.length}명 더 있어요. 더 입력해서 좁혀주세요.</p>` : '');
+  card.innerHTML = one ? (people.length > 1 ? `<button class="ghost pk-back" data-back>← 후보 ${people.length}명으로 돌아가기</button>` : '') + pickupCard(one)
+    : empty(people.length > 1 ? '왼쪽에서 받을 사람을 고르세요' : '검색한 사람의 카드가 여기에 떠요');
+}
+function pick(userId) {
+  pickedUser = userId;renderPickup();
+  if (narrow.matches) ($('#pk-results .pk-card') ?? $('#pk-list')).scrollIntoView({block:'start'});
 }
 function showUndo(p, qty, orderIds) {
   clearInterval(undoTimer);
@@ -186,22 +192,41 @@ function showUndo(p, qty, orderIds) {
   // 버튼을 다시 그리지 않고 숫자만 바꾼다(누르는 순간 버튼이 바뀌어 클릭이 사라지지 않도록).
   undoTimer = setInterval(() => {if (--left <= 0) {clearInterval(undoTimer);box.hidden = true;} else box.querySelector('[data-undo] span').textContent = left;}, 1000);
 }
-$('#pk-q').addEventListener('input', () => {pickedUser = null;renderPickup();});
-$('#pk-results').addEventListener('click', async e => {
-  const pick = e.target.closest('[data-pick]'), back = e.target.closest('[data-back]');
-  if (pick || back) {pickedUser = pick ? Number(pick.dataset.pick) : null;renderPickup();($('#pk-results .pk-card') ?? $('#pk-results')).scrollIntoView({block:'start'});return;}
-  const btn = e.target.closest('[data-give]');if (!btn) return;
+async function give(btn) {
   const p = personOf(Number(btn.dataset.give)), orderIds = p.give.map(o => o.id), qty = sumQty(p.give);
   await busy(btn, async () => {
     try {
       await api('POST', '/api/admin/pickup', {orderIds});
       showUndo(p, qty, orderIds);
-      $('#pk-q').value = '';pickedUser = null;$('#pk-q').focus();
+      $('#pk-q').value = '';pickedUser = null;
     } catch (err) {
       toast(err.code === 'NETWORK' || err.code === 'TIMEOUT' ? `${err.message} 급하면 종이 명단에 체크해두세요.` : err.message);
     }
     await loadOrders().catch(() => {});
   });
+  $('#pk-q').focus();
+}
+$('#pk-q').addEventListener('input', () => {pickedUser = null;renderPickup();});
+// 노트북: 검색창에서 손을 떼지 않고 ↑↓로 고르고 Enter로 전달. 카드가 떠 있을 때만 Enter가 동작한다.
+$('#pk-q').addEventListener('keydown', e => {
+  if (e.isComposing || e.keyCode === 229) return;
+  if (e.key === 'Escape') {e.preventDefault();$('#pk-q').value = '';pickedUser = null;renderPickup();return;}
+  if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && shownPeople.length) {
+    e.preventDefault();
+    const i = shownPeople.findIndex(p => p.userId === pickedUser), n = shownPeople.length;
+    pick(shownPeople[i < 0 ? (e.key === 'ArrowDown' ? 0 : n - 1) : (i + (e.key === 'ArrowDown' ? 1 : n - 1)) % n].userId);
+    return;
+  }
+  if (e.key === 'Enter') {e.preventDefault();const btn = $('#pk-results [data-give]');if (btn) give(btn);}
+});
+$('#pk-list').addEventListener('click', e => {
+  const btn = e.target.closest('[data-pick]');if (!btn) return;
+  pick(Number(btn.dataset.pick));
+  if (!narrow.matches) $('#pk-q').focus();
+});
+$('#pk-results').addEventListener('click', e => {
+  if (e.target.closest('[data-back]')) {pick(null);return;}
+  const btn = e.target.closest('[data-give]');if (btn) give(btn);
 });
 $('#pk-undo').addEventListener('click', async e => {
   const btn = e.target.closest('[data-undo]');if (!btn) return;
@@ -211,6 +236,7 @@ $('#pk-undo').addEventListener('click', async e => {
     catch (err) {toast(err.message);}
     await loadOrders().catch(() => {});
   });
+  $('#pk-q').focus();
 });
 
 // 인쇄용 명단: 그날 수령분을 입금자명 가나다순으로, 체크 칸과 함께. 인터넷이 끊겼을 때 쓰는 종이 백업.
