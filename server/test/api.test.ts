@@ -25,6 +25,9 @@ let app: NestExpressApplication;
 before(async () => {
   const root = path.resolve(__dirname, '..', '..');
   execFileSync(path.join(root, 'node_modules', '.bin', 'prisma'), ['migrate', 'deploy'], { cwd: root, env: process.env, stdio: 'ignore' });
+  // 주문 마감(GROUP_BUY.ordersCloseAt)이 지나도 CI가 돌도록 테스트 중에는 마감을 미룬다. 마감 동작은 '마감 후' 테스트가 이 마감 시각으로 확인한다.
+  const { GROUP_BUY } = await import('../src/common/group-buy');
+  (GROUP_BUY as { ordersCloseAt: Date }).ordersCloseAt = new Date('2099-01-01T00:00:00+09:00');
   const { createApp } = await import('../src/main');
   ({ app } = await createApp());
   app.useLogger(false);
@@ -212,7 +215,8 @@ test('마감 후에는 제출·수정·즉시 취소가 막힌다(서버 시각 
   await c.json('PATCH', '/api/me', { nickname: '마감테스트' });
   const created = (await c.json('POST', '/api/orders', ORDER)).body.order;
   const userId = (await c.json('GET', '/api/me')).body.user.id;
-  const late = new Date('2026-10-13T22:00:00+09:00');
+  const { GROUP_BUY } = await import('../src/common/group-buy');
+  const late = new Date(GROUP_BUY.ordersCloseAt);
   await assert.rejects(orders.create(userId, '마감테스트', ORDER, late), /마감/);
   await assert.rejects(orders.update(userId, '마감테스트', created.id, ORDER, late), /마감/);
   await assert.rejects(orders.setPickupDate(userId, created.id, '2026-10-18', late));
@@ -347,4 +351,53 @@ test('정산 장부: 운영자만, 입금 확인 주문과 업체 결제·개인
   const after = (await admin.json('GET', '/api/admin/ledger')).body;
   assert.ok(!after.entries.some((e: any) => e.id === advanceId));
   assert.equal(after.summary.balance - before.balance, -15900);
+});
+
+test('현장 수령: 입금 확인 주문만 전달, 여러 건 한 번에·전부 아니면 하나도 안 바뀜, 동시 전달은 한 번만, 되돌리기', async () => {
+  const user = new Client();
+  await user.login('3501');
+  await user.json('PATCH', '/api/me', { nickname: '수령자' });
+  const a = (await user.json('POST', '/api/orders', { ...ORDER, requestKey: key() })).body.order;
+  const b = (await user.json('POST', '/api/orders', { ...ORDER, quantity: 1, requestKey: key() })).body.order;
+  const pending = (await user.json('POST', '/api/orders', { ...ORDER, quantity: 2, requestKey: key() })).body.order;
+
+  assert.equal((await user.json('POST', '/api/admin/pickup', { orderIds: [a.id] })).status, 403);
+  assert.equal((await user.json('POST', '/api/admin/pickup/undo', { orderIds: [a.id] })).status, 403);
+
+  const admin = new Client();
+  await admin.login('9999');
+  for (const o of [a, b]) await admin.json('POST', `/api/admin/orders/${o.id}/status`, { status: 'paid' });
+  const statusOf = async (id: string) => (await admin.json('GET', '/api/admin/orders')).body.orders.find((o: any) => o.id === id).status;
+
+  assert.equal((await admin.json('POST', '/api/admin/pickup', { orderIds: [] })).status, 400);
+  assert.equal((await admin.json('POST', '/api/admin/pickup', { orderIds: 'x' })).status, 400);
+  assert.equal((await admin.json('POST', '/api/admin/pickup', { orderIds: ['DNC-NOPE'] })).status, 404);
+
+  // 입금 미확인 주문이 섞이면 거절하고, 같이 보낸 입금 확인 주문도 바뀌지 않는다.
+  let r = await admin.json('POST', '/api/admin/pickup', { orderIds: [a.id, pending.id] });
+  assert.equal(r.status, 409);
+  assert.equal(await statusOf(a.id), 'paid');
+  assert.equal(await statusOf(pending.id), 'payment_pending');
+
+  // 폰 두 대가 동시에 눌러도 한 번만 성공한다.
+  const both = await Promise.all([1, 2].map(() => admin.json('POST', '/api/admin/pickup', { orderIds: [a.id, b.id] })));
+  assert.deepEqual(both.map((x) => x.status).sort(), [201, 409]);
+  assert.equal(await statusOf(a.id), 'picked_up');
+  assert.equal(await statusOf(b.id), 'picked_up');
+  assert.equal((await user.json('GET', '/api/me')).body.orders.filter((o: any) => o.status === 'picked_up').length, 2);
+
+  // 이미 수령한 주문은 다시 전달할 수 없다.
+  assert.equal((await admin.json('POST', '/api/admin/pickup', { orderIds: [a.id] })).status, 409);
+
+  // 되돌리기: picked_up → paid만.
+  assert.equal((await admin.json('POST', '/api/admin/pickup/undo', { orderIds: [pending.id] })).status, 409);
+  r = await admin.json('POST', '/api/admin/pickup/undo', { orderIds: [a.id, b.id] });
+  assert.equal(r.status, 201);
+  assert.deepEqual(r.body.orders.map((o: any) => o.status), ['paid', 'paid']);
+  assert.equal((await admin.json('POST', '/api/admin/pickup/undo', { orderIds: [a.id] })).status, 409);
+
+  const logged = (await admin.json('GET', '/api/admin/orders')).body.orders.find((o: any) => o.id === a.id);
+  assert.deepEqual(logged.logs.map((l: any) => `${l.actor}:${l.toStatus}:${l.note ?? ''}`), [
+    'user:payment_pending:주문서 제출', 'admin:paid:', 'admin:picked_up:현장 수령', 'admin:paid:현장 수령 되돌리기',
+  ]);
 });

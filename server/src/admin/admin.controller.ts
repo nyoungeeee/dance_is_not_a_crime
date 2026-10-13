@@ -27,6 +27,18 @@ export class AdminController {
     return { order: await this.orders.adminSetStatus(admin.id, id, body?.status, body?.note) };
   }
 
+  /** 현장 수령 전달 완료. 입금 확인 완료(paid) 주문만, 전부 아니면 409로 아무것도 안 바꾼다. */
+  @Post('pickup')
+  async pickup(@CurrentUser() admin: SessionUser, @Body() body: { orderIds?: unknown }) {
+    return { orders: await this.orders.adminPickup(admin.id, body?.orderIds) };
+  }
+
+  /** 방금 누른 전달 완료를 되돌린다(picked_up → paid). */
+  @Post('pickup/undo')
+  async undoPickup(@CurrentUser() admin: SessionUser, @Body() body: { orderIds?: unknown }) {
+    return { orders: await this.orders.adminPickup(admin.id, body?.orderIds, true) };
+  }
+
   @Get('threads')
   async threads() {
     return { threads: await this.messages.threads() };

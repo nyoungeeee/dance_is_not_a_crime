@@ -5,16 +5,28 @@
   <meta name="robots" content="noindex">
   <title>운영자 화면 | 춤은 불법이 아니다</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%23161616'/%3E%3Ctext x='32' y='48' text-anchor='middle' font-size='49' fill='%23d7fa61'%3E✳︎%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/admin.css?v=4"><script type="module" src="/admin.js?v=5"></script>
+  <link rel="stylesheet" href="/admin.css?v=9"><script type="module" src="/admin.js?v=10"></script>
 </head>
 <body>
-  <header class="bar"><a href="/" class="brand">춤은 불법이 아니다 <small>운영자</small></a><nav><button data-tab="orders" class="tab active">주문</button><button data-tab="threads" class="tab">문의 <span id="thread-unread" class="badge" hidden></span></button><button data-tab="ledger" class="tab">정산</button></nav><span id="who"></span></header>
+  <header class="bar"><a href="/" class="brand">춤은 불법이 아니다 <small>운영자</small></a><nav><button data-tab="orders" class="tab active">주문</button><button data-tab="pickup" class="tab">현장 수령</button><button data-tab="threads" class="tab">문의 <span id="thread-unread" class="badge" hidden></span></button><button data-tab="ledger" class="tab">정산</button></nav><span id="who"></span></header>
   <main>
     <p id="gate" class="gate" role="status"><span class="spinner" aria-hidden="true"></span> 불러오는 중이에요</p>
     <section id="orders" hidden>
       <div id="summary" class="summary"></div>
       <div class="filters"><select id="status-filter" aria-label="상태"><option value="">전체 상태</option></select><input id="search" type="search" placeholder="주문번호·닉네임·입금자명 검색" aria-label="검색"><button id="reload" class="ghost">새로고침</button><button id="csv" class="ghost">CSV 내려받기</button></div>
       <div class="table-wrap"><table><thead><tr><th>주문번호</th><th>닉네임</th><th>입금자명</th><th>수량</th><th>금액</th><th>수령</th><th>상태</th><th>접수</th><th>처리</th></tr></thead><tbody id="order-rows"></tbody></table></div>
+    </section>
+    <section id="pickup" hidden>
+      <div id="pk-stats" class="summary"></div>
+      <div class="pk-print"><select id="pk-print-date" aria-label="명단 날짜"></select><button id="pk-print" class="ghost">인쇄용 명단</button></div>
+      <div class="pk-side">
+        <div class="pk-search"><input id="pk-q" type="search" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="주문번호 끝 4자리 · 입금자명 · 닉네임" aria-label="수령자 검색" aria-controls="pk-list pk-results"></div>
+        <p class="pk-keys"><kbd>↑</kbd><kbd>↓</kbd> 사람 고르기 · <kbd>Enter</kbd> 전달 완료 · <kbd>Esc</kbd> 지우기</p>
+        <div id="pk-undo" class="pk-undo" role="status" hidden></div>
+        <div id="pk-list" class="pk-list"></div>
+        <p class="pk-offline">인터넷이 끊기면 종이 명단에 체크하고, 연결되면 여기서 처리하세요.</p>
+      </div>
+      <div id="pk-results" class="pk-results" aria-live="polite"></div>
     </section>
     <section id="ledger" hidden>
       <div class="ledger-top">
@@ -43,6 +55,7 @@
       <div class="thread-layout"><ul id="thread-list" class="thread-list"></ul><div id="thread-view" class="thread-view"><p class="muted">왼쪽에서 대화를 고르세요.</p></div></div>
     </section>
   </main>
+  <div id="print-sheet" class="print-sheet"></div>
   <div id="toast" role="status" aria-live="polite"></div>
 </body>
 </html>

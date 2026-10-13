@@ -48,7 +48,7 @@ function renderOrders() {
 }
 async function loadOrders() {
   orders = (await api('GET', '/api/admin/orders')).orders;
-  renderSummary();renderOrders();
+  renderSummary();renderOrders();renderPickup();
 }
 $('#status-filter').addEventListener('change', renderOrders);
 $('#search').addEventListener('input', renderOrders);
@@ -95,6 +95,184 @@ $('#thread-view').addEventListener('submit', async e => {
     try {await api('POST', `/api/admin/threads/${currentThread}`, {text:ta.value});await openThread(currentThread);}
     catch (err) {toast(err.message);}
   });
+});
+
+// 현장 수령: 사람 단위로 찾아서 입금 확인 완료 주문만 한 번에 전달 완료로 바꾼다. 상태 검사는 서버가 다시 한다.
+const PENDING = ['payment_pending','verification_requested'];
+const kstDay = (d = new Date()) => new Date(d.getTime() + 9 * 3600e3).toISOString().slice(0, 10);
+const norm = v => String(v ?? '').replace(/\s+/g, '').toLowerCase();
+const sumQty = list => list.reduce((a, o) => a + o.quantity, 0);
+const dayLabel = date => Object.values(EVENTS).flatMap(e => e.dates).find(d => d.value === date)?.label ?? `${Number(date.slice(5, 7))}/${Number(date.slice(8))}`;
+const pickedAt = o => [...o.logs].reverse().find(l => l.toStatus === 'picked_up')?.createdAt;
+/** 고객이 보여주는 주문번호와 맞춰 보기 쉽게 끝 4자리를 굵게. */
+const idHTML = id => `${esc(id.slice(0, -4))}<b>${esc(id.slice(-4))}</b>`;
+let undoTimer = null;
+function personOf(userId) {
+  const mine = orders.filter(o => o.userId === userId);
+  return {
+    userId, orders:mine,
+    nickname:mine.at(-1)?.nickname ?? '',
+    payers:[...new Set(mine.map(o => o.payerName))],
+    give:mine.filter(o => o.status === 'paid'),
+    done:mine.filter(o => o.status === 'picked_up'),
+    unpaid:mine.filter(o => PENDING.includes(o.status)),
+  };
+}
+function renderPickupStats() {
+  const today = kstDay(), live = orders.filter(o => ['paid','picked_up'].includes(o.status));
+  const todays = live.filter(o => o.pickupDate === today), done = o => o.status === 'picked_up';
+  const waiting = new Set(todays.filter(o => !done(o)).map(o => o.userId)).size;
+  $('#pk-stats').innerHTML = [
+    [`오늘 ${dayLabel(today)}`, `${sumQty(todays.filter(done))}/${sumQty(todays)}개`, `전달 · 남은 ${waiting}명`],
+    ['전체', `${sumQty(live.filter(done))}/${sumQty(live)}개`, '전달'],
+    ['입금 미확인', `${orders.filter(o => PENDING.includes(o.status)).length}건`, '전달 금지'],
+  ].map(([k, v, sub]) => `<div><span>${esc(k)}</span><strong>${esc(v)}</strong><small>${esc(sub)}</small></div>`).join('');
+}
+/** 색은 두 가지만: 라임 = 누를 버튼, 빨강 = 주면 안 되는 것. 나머지는 흰색·회색. */
+function pickupCard(p) {
+  const today = kstDay();
+  const line = o => {
+    const [cls, note] = o.status === 'picked_up' ? ['is-done', `수령 완료 · ${time(pickedAt(o) ?? o.updatedAt)}`]
+      : PENDING.includes(o.status) ? ['is-stop', '입금 미확인 · 전달 금지']
+      : o.status === 'paid' ? (o.pickupDate !== today ? ['is-other', '수령일이 오늘이 아님'] : ['', ''])
+      : ['is-done', `${ORDER_STATUS[o.status] ?? o.status} · 전달 안 함`];
+    return `<li class="pk-line ${cls}"><code>${idHTML(o.id)}</code><span class="pk-date">${esc(pickupDateLabel(o.event, o.pickupDate))}</span><span class="pk-qty">${o.quantity}개</span>${note ? `<span class="pk-note">${esc(note)}</span>` : ''}</li>`;
+  };
+  const qty = sumQty(p.give), last = p.done.at(-1);
+  // 데스크톱 카드 가운데: 닉네임·수령일·총 개수. 전달할 게 없으면 이미 받은 것 또는 입금 미확인 기준으로 보여준다.
+  const key = p.give.length ? p.give : p.done.length ? p.done : p.unpaid;
+  const dates = [...new Set(key.map(o => pickupDateLabel(o.event, o.pickupDate)))].join(' · ') || '-';
+  const notToday = p.give.some(o => o.pickupDate !== today);
+  const [qtyCls, qtyNote] = p.give.length ? ['', '전달할 수량'] : p.done.length ? ['is-stop', '이미 수령함'] : p.unpaid.length ? ['is-stop', '입금 미확인 · 전달 금지'] : ['', '전달할 주문 없음'];
+  return `<article class="pk-card">
+    <header class="pk-head"><strong>${esc(p.nickname)}</strong><span>입금자명 ${esc(p.payers.join(' / '))}</span></header>
+    <div class="pk-hero">
+      <div class="pk-hero-fig"><span>수령일</span><strong>${esc(dates)}</strong><small class="${notToday ? 'is-other' : ''}">${notToday ? '오늘 수령분 아님' : '&nbsp;'}</small></div>
+      <div class="pk-hero-fig"><span>총 개수</span><strong>${sumQty(key)}개</strong><small class="${qtyCls}">${esc(qtyNote)}</small></div>
+    </div>
+    <ul class="pk-lines">${p.orders.map(line).join('')}</ul>
+    ${qty ? `<button class="primary pk-action" data-give="${p.userId}">${qty}개 전달 완료<kbd>Enter</kbd></button>`
+      : last ? `<p class="pk-action is-stop">이미 수령함 · ${esc(time(pickedAt(last) ?? last.updatedAt))}</p>`
+      : '<p class="pk-action">전달할 주문이 없어요</p>'}
+  </article>`;
+}
+/**
+ * 카드는 한 번에 한 사람만. 주문번호 끝 4자리·주문번호 전체·입금자명이 정확히 맞으면 그 사람만(운영 데이터에서 서로 겹치지 않음),
+ * 아니면 부분 일치. 여러 명이면 왼쪽 후보에서 ↑↓나 클릭으로 골라야 오른쪽에 카드가 뜬다(자동으로 고르지 않음).
+ */
+let pickedUser = null, shownPeople = [];
+const narrow = matchMedia('(max-width:900px)');
+function matchPeople(q) {
+  const exact = orders.filter(o => norm(o.id).slice(-4) === q || norm(o.id) === q || norm(o.payerName) === q);
+  const hits = exact.length ? exact : orders.filter(o => [o.id, o.payerName, o.nickname].some(v => norm(v).includes(q)));
+  return [...new Set(hits.map(o => o.userId))].map(personOf);
+}
+function candidate(p) {
+  const [cls, label] = p.give.length ? ['', `${sumQty(p.give)}개 전달 가능`] : p.done.length ? ['is-stop', '이미 수령함'] : p.unpaid.length ? ['is-stop', '입금 미확인'] : ['', '전달할 주문 없음'];
+  return `<li><button data-pick="${p.userId}" aria-selected="${p.userId === pickedUser}"><strong>${esc(p.nickname)}</strong><em class="${cls}">${esc(label)}</em><span>${esc(p.payers.join(' / '))}</span></button></li>`;
+}
+function renderPickup() {
+  if (!$('#pk-stats')) return;
+  renderPickupStats();
+  const q = norm($('#pk-q').value), list = $('#pk-list'), card = $('#pk-results');
+  const empty = text => `<p class="pk-empty">${text}</p>`;
+  const people = q.length < 2 ? [] : matchPeople(q);
+  const one = people.length === 1 ? people[0] : people.find(p => p.userId === pickedUser);
+  shownPeople = people.length > 1 ? people.slice(0, 8) : [];
+  $('#pickup').classList.toggle('picking', Boolean(one && people.length > 1));
+  if (q.length < 2) list.innerHTML = '<p class="muted">주문번호 끝 4자리나 입금자명을 입력하세요.</p>';
+  else if (!people.length) list.innerHTML = '<p class="muted">찾는 주문이 없어요. 주문번호를 다시 확인해주세요.</p>';
+  else if (people.length === 1) list.innerHTML = '<p class="pk-count">1명 찾았어요.</p>';
+  else list.innerHTML = `<p class="pk-count">${people.length}명이 찾아졌어요. 받을 사람을 고르세요.</p><ul class="pk-pick">${shownPeople.map(candidate).join('')}</ul>`
+    + (people.length > shownPeople.length ? `<p class="muted">${people.length - shownPeople.length}명 더 있어요. 더 입력해서 좁혀주세요.</p>` : '');
+  card.innerHTML = one ? (people.length > 1 ? `<button class="ghost pk-back" data-back>← 후보 ${people.length}명으로 돌아가기</button>` : '') + pickupCard(one)
+    : empty(people.length > 1 ? '왼쪽에서 받을 사람을 고르세요' : '검색한 사람의 카드가 여기에 떠요');
+}
+function pick(userId) {
+  pickedUser = userId;renderPickup();
+  if (narrow.matches) ($('#pk-results .pk-card') ?? $('#pk-list')).scrollIntoView({block:'start'});
+}
+function showUndo(p, qty, orderIds) {
+  clearInterval(undoTimer);
+  let left = 10;
+  const box = $('#pk-undo');
+  box.innerHTML = `<span><strong>${esc(p.nickname)}</strong> ${qty}개 전달 완료 처리했어요.</span><button class="ghost" data-undo>되돌리기 <span>${left}</span></button>`;
+  box.hidden = false;box.dataset.ids = JSON.stringify(orderIds);
+  // 버튼을 다시 그리지 않고 숫자만 바꾼다(누르는 순간 버튼이 바뀌어 클릭이 사라지지 않도록).
+  undoTimer = setInterval(() => {if (--left <= 0) {clearInterval(undoTimer);box.hidden = true;} else box.querySelector('[data-undo] span').textContent = left;}, 1000);
+}
+async function give(btn) {
+  const p = personOf(Number(btn.dataset.give)), orderIds = p.give.map(o => o.id), qty = sumQty(p.give);
+  await busy(btn, async () => {
+    try {
+      await api('POST', '/api/admin/pickup', {orderIds});
+      showUndo(p, qty, orderIds);
+      $('#pk-q').value = '';pickedUser = null;
+    } catch (err) {
+      toast(err.code === 'NETWORK' || err.code === 'TIMEOUT' ? `${err.message} 급하면 종이 명단에 체크해두세요.` : err.message);
+    }
+    await loadOrders().catch(() => {});
+  });
+  $('#pk-q').focus();
+}
+$('#pk-q').addEventListener('input', () => {pickedUser = null;renderPickup();});
+// 노트북: 검색창에서 손을 떼지 않고 ↑↓로 고르고 Enter로 전달. 카드가 떠 있을 때만 Enter가 동작한다.
+$('#pk-q').addEventListener('keydown', e => {
+  if (e.isComposing || e.keyCode === 229) return;
+  if (e.key === 'Escape') {e.preventDefault();$('#pk-q').value = '';pickedUser = null;renderPickup();return;}
+  if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && shownPeople.length) {
+    e.preventDefault();
+    const i = shownPeople.findIndex(p => p.userId === pickedUser), n = shownPeople.length;
+    pick(shownPeople[i < 0 ? (e.key === 'ArrowDown' ? 0 : n - 1) : (i + (e.key === 'ArrowDown' ? 1 : n - 1)) % n].userId);
+    return;
+  }
+  if (e.key === 'Enter') {e.preventDefault();const btn = $('#pk-results [data-give]');if (btn) give(btn);}
+});
+$('#pk-list').addEventListener('click', e => {
+  const btn = e.target.closest('[data-pick]');if (!btn) return;
+  pick(Number(btn.dataset.pick));
+  if (!narrow.matches) $('#pk-q').focus();
+});
+$('#pk-results').addEventListener('click', e => {
+  if (e.target.closest('[data-back]')) {pick(null);return;}
+  const btn = e.target.closest('[data-give]');if (btn) give(btn);
+});
+$('#pk-undo').addEventListener('click', async e => {
+  const btn = e.target.closest('[data-undo]');if (!btn) return;
+  clearInterval(undoTimer);
+  await busy(btn, async () => {
+    try {await api('POST', '/api/admin/pickup/undo', {orderIds:JSON.parse($('#pk-undo').dataset.ids)});$('#pk-undo').hidden = true;toast('되돌렸어요. 물건을 돌려받았는지 확인하세요.');}
+    catch (err) {toast(err.message);}
+    await loadOrders().catch(() => {});
+  });
+  $('#pk-q').focus();
+});
+
+// 인쇄용 명단: 그날 수령분을 입금자명 가나다순으로, 체크 칸과 함께. 인터넷이 끊겼을 때 쓰는 종이 백업.
+for (const e of Object.values(EVENTS).filter(e => e.available)) for (const d of e.dates) $('#pk-print-date').insertAdjacentHTML('beforeend', `<option value="${d.value}">${esc(e.name)} ${d.label}</option>`);
+{
+  const today = kstDay(), opt = [...$('#pk-print-date').options].find(o => o.value >= today);
+  if (opt) $('#pk-print-date').value = opt.value;
+}
+$('#pk-print').addEventListener('click', () => {
+  const date = $('#pk-print-date').value;
+  const ofDay = orders.filter(o => o.pickupDate === date);
+  const people = [...new Set(ofDay.map(o => o.userId))].map(id => {
+    const mine = ofDay.filter(o => o.userId === id);
+    return {payer:[...new Set(mine.map(o => o.payerName))].join(' / '), nickname:mine.at(-1).nickname,
+      give:mine.filter(o => ['paid','picked_up'].includes(o.status)), unpaid:mine.filter(o => PENDING.includes(o.status))};
+  }).sort((a, b) => a.payer.localeCompare(b.payer, 'ko'));
+  const rows = list => list.map(p => {
+    const done = p.give.filter(o => o.status === 'picked_up');
+    return `<tr><td class="box">${done.length === p.give.length ? '✔' : ''}</td><td>${esc(p.payer)}</td><td>${esc(p.nickname)}</td><td>${p.give.map(o => idHTML(o.id)).join('<br>')}</td><td class="num">${sumQty(p.give)}</td><td>${done.length ? `수령 ${esc(time(pickedAt(done.at(-1)) ?? done.at(-1).updatedAt))}` : ''}</td></tr>`;
+  }).join('');
+  const givers = people.filter(p => p.give.length), unpaid = people.filter(p => p.unpaid.length);
+  const head = '<thead><tr><th class="box">✔</th><th>입금자명</th><th>닉네임</th><th>주문번호</th><th>수량</th><th>비고</th></tr></thead>';
+  $('#print-sheet').innerHTML = `<h1>춤은 불법이 아니다 · ${esc($('#pk-print-date').selectedOptions[0].textContent)} 수령 명단</h1>
+    <p>입금 확인 ${givers.length}명 · ${sumQty(givers.flatMap(p => p.give))}개 · 출력 ${esc(dayTime(new Date().toISOString()))} (이후 바뀐 내용은 화면이 기준)</p>
+    <table>${head}<tbody>${rows(givers)}</tbody></table>
+    ${unpaid.length ? `<h2>입금 미확인 · 전달 금지</h2><table><thead><tr><th>입금자명</th><th>닉네임</th><th>주문번호</th><th>수량</th></tr></thead><tbody>${unpaid.map(p => `<tr><td>${esc(p.payer)}</td><td>${esc(p.nickname)}</td><td>${p.unpaid.map(o => idHTML(o.id)).join('<br>')}</td><td class="num">${sumQty(p.unpaid)}</td></tr>`).join('')}</tbody></table>` : ''}`;
+  window.print();
 });
 
 // 정산: 돈이 오간 내역. 주문 입금 합계는 서버가 주문 상태로 계산한다.
@@ -152,22 +330,32 @@ $('#ledger-rows').addEventListener('click', async e => {
   });
 });
 
-document.querySelectorAll('[data-tab]').forEach(t => t.addEventListener('click', () => {
-  document.querySelectorAll('[data-tab]').forEach(x => x.classList.toggle('active', x === t));
-  for (const id of ['orders','threads','ledger']) $(`#${id}`).hidden = t.dataset.tab !== id;
-  ({orders:loadOrders, threads:loadThreads, ledger:loadLedger})[t.dataset.tab]().catch(e => toast(e.message));
-}));
+const TABS = {orders:loadOrders, pickup:() => loadOrders().then(() => $('#pk-q').focus()), threads:loadThreads, ledger:loadLedger};
+function openTab(tab) {
+  document.querySelectorAll('[data-tab]').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
+  for (const id of Object.keys(TABS)) $(`#${id}`).hidden = tab !== id;
+  history.replaceState(null, '', tab === 'orders' ? location.pathname : `#${tab}`);
+  return TABS[tab]().catch(e => toast(e.message));
+}
+document.querySelectorAll('[data-tab]').forEach(t => t.addEventListener('click', () => openTab(t.dataset.tab)));
+window.addEventListener('hashchange', () => {const tab = location.hash.slice(1);if (Object.hasOwn(TABS, tab) && $('#gate').hidden) openTab(tab);});
 
 (async () => {
   const me = await api('GET', '/api/me').catch(() => ({user:null}));
   if (!me.user) {$('#gate').innerHTML = '운영자 계정으로 <a href="/api/auth/kakao/login?intent=admin">카카오 로그인</a>해주세요.';return;}
   if (!me.user.isAdmin) {$('#gate').innerHTML = '운영자로 등록된 계정이 아니에요. <a href="/">주문 페이지로 돌아가기</a>';return;}
-  $('#gate').hidden = true;$('#orders').hidden = false;$('#who').textContent = `${me.user.nickname ?? ''} 님`;
-  await Promise.all([loadOrders(), loadThreads()]).catch(e => toast(e.message));
+  $('#gate').hidden = true;$('#who').textContent = `${me.user.nickname ?? ''} 님`;
+  // /admin#pickup 으로 열면 바로 현장 수령 탭
+  const first = location.hash.slice(1);
+  await Promise.all([openTab(Object.hasOwn(TABS, first) ? first : 'orders'), loadThreads()]).catch(e => toast(e.message));
   // 열어 둔 동안 1분마다 갱신(입력 중인 메모를 지우지 않도록 주문 표는 포커스가 없을 때만)
   setInterval(() => {
     if (document.hidden) return;
     if (!$('#orders').hidden && !document.activeElement?.closest('#order-rows')) loadOrders().catch(() => {});
     loadThreads().catch(() => {});
   }, 60000);
+  // 현장 수령 탭은 다른 폰에서 처리한 것도 보이도록 20초마다(누르는 중이면 건너뜀)
+  setInterval(() => {
+    if (!document.hidden && !$('#pickup').hidden && !document.querySelector('#pickup button:disabled')) loadOrders().catch(() => {});
+  }, 20000);
 })();
