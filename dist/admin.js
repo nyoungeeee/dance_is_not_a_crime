@@ -147,17 +147,35 @@ function pickupCard(p) {
       : '<p class="pk-action">전달할 주문이 없어요</p>'}
   </article>`;
 }
+/**
+ * 한 화면에 한 사람만. 주문번호 끝 4자리·주문번호 전체·입금자명이 정확히 맞으면 그 사람만(운영 데이터에서 서로 겹치지 않음),
+ * 아니면 부분 일치. 여러 명이면 한 줄 후보 목록에서 골라 카드를 연다.
+ */
+let pickedUser = null;
+function matchPeople(q) {
+  const exact = orders.filter(o => norm(o.id).slice(-4) === q || norm(o.id) === q || norm(o.payerName) === q);
+  const hits = exact.length ? exact : orders.filter(o => [o.id, o.payerName, o.nickname].some(v => norm(v).includes(q)));
+  return [...new Set(hits.map(o => o.userId))].map(personOf);
+}
+function candidate(p) {
+  const [cls, label] = p.give.length ? ['', `${sumQty(p.give)}개 전달 가능`] : p.done.length ? ['is-stop', '이미 수령함'] : p.unpaid.length ? ['is-stop', '입금 미확인'] : ['', '전달할 주문 없음'];
+  return `<li><button data-pick="${p.userId}"><strong>${esc(p.payers.join(' / '))}</strong><span>${esc(p.nickname)}</span><em class="${cls}">${esc(label)}</em></button></li>`;
+}
 function renderPickup() {
   if (!$('#pk-stats')) return;
   renderPickupStats();
   const q = norm($('#pk-q').value);
-  if (q.length < 2) {$('#pk-results').innerHTML = '<p class="muted">주문번호 끝 4자리나 입금자명을 2글자 이상 입력하세요.</p>';return;}
-  const ids = [...new Set(orders.filter(o => [o.id, o.payerName, o.nickname].some(v => norm(v).includes(q))).map(o => o.userId))];
-  const people = ids.map(personOf).sort((a, b) => (b.give.length > 0) - (a.give.length > 0));
-  const shown = people.slice(0, 6);
-  $('#pk-results').innerHTML = shown.map(pickupCard).join('')
-    + (people.length > shown.length ? `<p class="muted">${people.length - shown.length}명 더 있어요. 더 입력해서 좁혀주세요.</p>` : '')
-    || '<p class="muted">찾는 주문이 없어요. 주문번호를 다시 확인해주세요.</p>';
+  if (q.length < 2) {$('#pk-results').innerHTML = '<p class="muted">주문번호 끝 4자리나 입금자명을 입력하세요.</p>';return;}
+  const people = matchPeople(q);
+  if (!people.length) {$('#pk-results').innerHTML = '<p class="muted">찾는 주문이 없어요. 주문번호를 다시 확인해주세요.</p>';return;}
+  const one = people.length === 1 ? people[0] : people.find(p => p.userId === pickedUser);
+  if (one) {
+    $('#pk-results').innerHTML = (people.length > 1 ? `<button class="ghost pk-back" data-back>← 후보 ${people.length}명으로 돌아가기</button>` : '') + pickupCard(one);
+    return;
+  }
+  const shown = people.slice(0, 8);
+  $('#pk-results').innerHTML = `<p class="pk-count">${people.length}명이 찾아졌어요. 받을 사람을 고르세요.</p><ul class="pk-pick">${shown.map(candidate).join('')}</ul>`
+    + (people.length > shown.length ? `<p class="muted">${people.length - shown.length}명 더 있어요. 더 입력해서 좁혀주세요.</p>` : '');
 }
 function showUndo(p, qty, orderIds) {
   clearInterval(undoTimer);
@@ -168,15 +186,17 @@ function showUndo(p, qty, orderIds) {
   // 버튼을 다시 그리지 않고 숫자만 바꾼다(누르는 순간 버튼이 바뀌어 클릭이 사라지지 않도록).
   undoTimer = setInterval(() => {if (--left <= 0) {clearInterval(undoTimer);box.hidden = true;} else box.querySelector('[data-undo] span').textContent = left;}, 1000);
 }
-$('#pk-q').addEventListener('input', renderPickup);
+$('#pk-q').addEventListener('input', () => {pickedUser = null;renderPickup();});
 $('#pk-results').addEventListener('click', async e => {
+  const pick = e.target.closest('[data-pick]'), back = e.target.closest('[data-back]');
+  if (pick || back) {pickedUser = pick ? Number(pick.dataset.pick) : null;renderPickup();($('#pk-results .pk-card') ?? $('#pk-results')).scrollIntoView({block:'start'});return;}
   const btn = e.target.closest('[data-give]');if (!btn) return;
   const p = personOf(Number(btn.dataset.give)), orderIds = p.give.map(o => o.id), qty = sumQty(p.give);
   await busy(btn, async () => {
     try {
       await api('POST', '/api/admin/pickup', {orderIds});
       showUndo(p, qty, orderIds);
-      $('#pk-q').value = '';$('#pk-q').focus();
+      $('#pk-q').value = '';pickedUser = null;$('#pk-q').focus();
     } catch (err) {
       toast(err.code === 'NETWORK' || err.code === 'TIMEOUT' ? `${err.message} 급하면 종이 명단에 체크해두세요.` : err.message);
     }
