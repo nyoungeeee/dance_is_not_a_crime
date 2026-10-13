@@ -139,8 +139,17 @@ function pickupCard(p) {
     return `<li class="pk-line ${cls}"><code>${idHTML(o.id)}</code><span class="pk-date">${esc(pickupDateLabel(o.event, o.pickupDate))}</span><span class="pk-qty">${o.quantity}개</span>${note ? `<span class="pk-note">${esc(note)}</span>` : ''}</li>`;
   };
   const qty = sumQty(p.give), last = p.done.at(-1);
+  // 데스크톱 카드 가운데: 닉네임·수령일·총 개수. 전달할 게 없으면 이미 받은 것 또는 입금 미확인 기준으로 보여준다.
+  const key = p.give.length ? p.give : p.done.length ? p.done : p.unpaid;
+  const dates = [...new Set(key.map(o => pickupDateLabel(o.event, o.pickupDate)))].join(' · ') || '-';
+  const notToday = p.give.some(o => o.pickupDate !== today);
+  const [qtyCls, qtyNote] = p.give.length ? ['', '전달할 수량'] : p.done.length ? ['is-stop', '이미 수령함'] : p.unpaid.length ? ['is-stop', '입금 미확인 · 전달 금지'] : ['', '전달할 주문 없음'];
   return `<article class="pk-card">
-    <header class="pk-head"><strong>${esc(p.payers.join(' / '))}</strong><span>${esc(p.nickname)}</span></header>
+    <header class="pk-head"><strong>${esc(p.nickname)}</strong><span>입금자명 ${esc(p.payers.join(' / '))}</span></header>
+    <div class="pk-hero">
+      <div class="pk-hero-fig"><span>수령일</span><strong>${esc(dates)}</strong><small class="${notToday ? 'is-other' : ''}">${notToday ? '오늘 수령분 아님' : '&nbsp;'}</small></div>
+      <div class="pk-hero-fig"><span>총 개수</span><strong>${sumQty(key)}개</strong><small class="${qtyCls}">${esc(qtyNote)}</small></div>
+    </div>
     <ul class="pk-lines">${p.orders.map(line).join('')}</ul>
     ${qty ? `<button class="primary pk-action" data-give="${p.userId}">${qty}개 전달 완료<kbd>Enter</kbd></button>`
       : last ? `<p class="pk-action is-stop">이미 수령함 · ${esc(time(pickedAt(last) ?? last.updatedAt))}</p>`
@@ -160,7 +169,7 @@ function matchPeople(q) {
 }
 function candidate(p) {
   const [cls, label] = p.give.length ? ['', `${sumQty(p.give)}개 전달 가능`] : p.done.length ? ['is-stop', '이미 수령함'] : p.unpaid.length ? ['is-stop', '입금 미확인'] : ['', '전달할 주문 없음'];
-  return `<li><button data-pick="${p.userId}" aria-selected="${p.userId === pickedUser}"><strong>${esc(p.payers.join(' / '))}</strong><em class="${cls}">${esc(label)}</em><span>${esc(p.nickname)}</span></button></li>`;
+  return `<li><button data-pick="${p.userId}" aria-selected="${p.userId === pickedUser}"><strong>${esc(p.nickname)}</strong><em class="${cls}">${esc(label)}</em><span>${esc(p.payers.join(' / '))}</span></button></li>`;
 }
 function renderPickup() {
   if (!$('#pk-stats')) return;
@@ -187,7 +196,7 @@ function showUndo(p, qty, orderIds) {
   clearInterval(undoTimer);
   let left = 10;
   const box = $('#pk-undo');
-  box.innerHTML = `<span><strong>${esc(p.payers.join(' / '))}</strong> ${qty}개 전달 완료 처리했어요.</span><button class="ghost" data-undo>되돌리기 <span>${left}</span></button>`;
+  box.innerHTML = `<span><strong>${esc(p.nickname)}</strong> ${qty}개 전달 완료 처리했어요.</span><button class="ghost" data-undo>되돌리기 <span>${left}</span></button>`;
   box.hidden = false;box.dataset.ids = JSON.stringify(orderIds);
   // 버튼을 다시 그리지 않고 숫자만 바꾼다(누르는 순간 버튼이 바뀌어 클릭이 사라지지 않도록).
   undoTimer = setInterval(() => {if (--left <= 0) {clearInterval(undoTimer);box.hidden = true;} else box.querySelector('[data-undo] span').textContent = left;}, 1000);
