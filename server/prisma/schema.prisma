@@ -86,3 +86,21 @@ model Message {
 
   @@index([userId, createdAt])
 }
+
+/// 운영자 정산 장부(돈이 오간 내역). 주문 입금은 Order에서 계산하고, 여기에는 그 밖의 돈 흐름만 적는다.
+/// kind: vendor_payment(업체 결제) | advance(운영자 개인 자금 투입) | reimburse(개인 자금 돌려받음) | refund(환불 송금) | other_in | other_out
+/// 금액은 항상 양수, 방향은 kind로 정한다. 지운 기록도 deletedAt만 채워 남긴다.
+model LedgerEntry {
+  id          Int       @id @default(autoincrement())
+  kind        String
+  amount      Int
+  quantity    Int?
+  memo        String
+  occurredAt  DateTime
+  createdBy   Int
+  createdAt   DateTime  @default(now())
+  deletedAt   DateTime?
+  deletedBy   Int?
+
+  @@index([occurredAt])
+}

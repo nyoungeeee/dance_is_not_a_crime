@@ -97,10 +97,65 @@ $('#thread-view').addEventListener('submit', async e => {
   });
 });
 
+// 정산: 돈이 오간 내역. 주문 입금 합계는 서버가 주문 상태로 계산한다.
+const LEDGER_KIND = {vendor_payment:['업체 결제',-1], advance:['운영자 개인 자금 투입',1], reimburse:['개인 자금 돌려받음',-1], other_in:['기타 수입',1], other_out:['기타 지출',-1]};
+const signed = n => `${n > 0 ? '+' : n < 0 ? '−' : ''}${Math.abs(n).toLocaleString('ko-KR')}원`;
+const dayTime = iso => new Date(iso).toLocaleString('ko-KR',{timeZone:'Asia/Seoul',year:'numeric',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
+let ledger = null;
+function renderLedger() {
+  const {summary:s, entries} = ledger;
+  const rows = [
+    ['주문 입금 (입금 확인 완료)', s.orderIncome.amount, `${s.orderIncome.count}건 · ${s.orderIncome.quantity}개`],
+    ['운영자 개인 자금 투입', s.advance, ''],
+    s.otherIn ? ['기타 수입', s.otherIn, ''] : null,
+    ['업체 결제', -s.vendor.amount, s.vendor.quantity ? `${s.vendor.quantity}개` : ''],
+    s.reimbursed ? ['개인 자금 돌려받음', -s.reimbursed, ''] : null,
+    s.otherOut ? ['기타 지출', -s.otherOut, ''] : null,
+  ].filter(Boolean);
+  $('#flow').innerHTML = `<h3>돈 흐름</h3>${rows.map(([k, v, sub]) => `<div class="flow-row"><span>${esc(k)}${sub ? `<small>${esc(sub)}</small>` : ''}</span><strong class="${v < 0 ? 'out' : 'in'}">${signed(v)}</strong></div>`).join('')}
+    <div class="flow-row total"><span>공구 통장 잔액 (계산)<small>실제 통장 잔액과 맞는지 확인하세요</small></span><strong>${won(s.balance)}</strong></div>`;
+  $('#flow-notes').innerHTML = [
+    ['아직 돌려받지 않은 개인 자금', won(s.outstandingAdvance), s.outstandingAdvance > 0 ? '이후 들어오는 주문 입금으로 돌려받을 돈' : ''],
+    ['발주 수량 − 입금 확인 수량', `${s.unmatchedQuantity}개`, s.unmatchedQuantity > 0 ? '예비·미입금·추후 주문분' : s.unmatchedQuantity < 0 ? '입금 확인 수량이 발주보다 많아요. 추가 발주가 필요해요' : ''],
+  ].map(([k, v, sub]) => `<div><span>${esc(k)}</span><strong>${esc(v)}</strong>${sub ? `<small>${esc(sub)}</small>` : ''}</div>`).join('');
+  $('#ledger-rows').innerHTML = entries.map(e => {
+    const [label, sign] = LEDGER_KIND[e.kind] ?? [e.kind, 1];
+    return `<tr><td>${dayTime(e.occurredAt)}</td><td>${esc(label)}</td><td class="num ${sign < 0 ? 'out' : 'in'}">${signed(sign * e.amount)}</td><td class="num">${e.quantity ?? ''}</td><td>${esc(e.memo)}</td><td><button class="ghost small" data-del="${e.id}">삭제</button></td></tr>`;
+  }).join('') || '<tr><td colspan="6" class="muted">아직 적은 내역이 없어요. 위에서 업체 결제, 개인 자금 투입 등을 추가하세요.</td></tr>';
+}
+async function loadLedger() {ledger = await api('GET', '/api/admin/ledger');renderLedger();}
+{
+  const now = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 16);
+  $('#ledger-form [name=occurredAt]').value = now;
+}
+const toInt = v => {const t = String(v).replace(/[,\s원개]/g, '');return t === '' ? null : /^\d+$/.test(t) ? Number(t) : NaN;};
+$('#ledger-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const f = e.target, btn = f.querySelector('button');
+  const body = {kind:f.kind.value, occurredAt:`${f.occurredAt.value}:00+09:00`, amount:toInt(f.amount.value), quantity:toInt(f.quantity.value), memo:f.memo.value};
+  if (!Number.isInteger(body.amount) || body.amount < 1) {toast('금액을 숫자로 입력해주세요.');return;}
+  if (Number.isNaN(body.quantity)) {toast('수량은 숫자로 입력해주세요.');return;}
+  const [label, sign] = LEDGER_KIND[body.kind];
+  if (!confirm(`${label} ${signed(sign * body.amount)}${body.quantity !== null ? ` · ${body.quantity}개` : ''}\n추가할까요?`)) return;
+  await busy(btn, async () => {
+    try {await api('POST', '/api/admin/ledger', body);f.amount.value = f.quantity.value = f.memo.value = '';await loadLedger();toast('추가했어요.');}
+    catch (err) {toast(err.message);}
+  });
+});
+$('#ledger-rows').addEventListener('click', async e => {
+  const btn = e.target.closest('[data-del]');if (!btn) return;
+  const entry = ledger.entries.find(x => x.id === Number(btn.dataset.del));
+  if (!confirm(`${LEDGER_KIND[entry.kind]?.[0] ?? entry.kind} ${won(entry.amount)} 내역을 지울까요?`)) return;
+  await busy(btn, async () => {
+    try {await api('DELETE', `/api/admin/ledger/${entry.id}`);await loadLedger();toast('지웠어요.');}
+    catch (err) {toast(err.message);}
+  });
+});
+
 document.querySelectorAll('[data-tab]').forEach(t => t.addEventListener('click', () => {
   document.querySelectorAll('[data-tab]').forEach(x => x.classList.toggle('active', x === t));
-  $('#orders').hidden = t.dataset.tab !== 'orders';$('#threads').hidden = t.dataset.tab !== 'threads';
-  (t.dataset.tab === 'orders' ? loadOrders() : loadThreads()).catch(e => toast(e.message));
+  for (const id of ['orders','threads','ledger']) $(`#${id}`).hidden = t.dataset.tab !== id;
+  ({orders:loadOrders, threads:loadThreads, ledger:loadLedger})[t.dataset.tab]().catch(e => toast(e.message));
 }));
 
 (async () => {

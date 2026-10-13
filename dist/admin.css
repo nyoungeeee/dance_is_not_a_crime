@@ -50,3 +50,20 @@ details{margin-top:6px;font-size:11px;color:var(--muted)}details ol{margin:6px 0
 @keyframes spin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.spinner{animation-duration:1.6s}}
 .gate .spinner{color:var(--lime)}
+.small{font-size:12px}.ghost.small{padding:3px 8px}
+.ledger-top{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:16px;margin-bottom:16px}
+.flow{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px 16px}
+.flow h3{margin:0 0 8px;font-size:13px;color:var(--muted)}
+.flow-row{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:8px 0;border-bottom:1px dashed var(--line)}
+.flow-row small{display:block;font-size:11px;color:var(--muted)}
+.flow-row strong{font-size:16px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.flow-row.total{border-bottom:0;border-top:2px solid var(--ink);margin-top:4px}.flow-row.total strong{font-size:20px;color:var(--lime)}
+.in{color:var(--lime)}.out{color:#ffb27a}
+.flow-notes{display:flex;flex-direction:column;gap:10px}
+.flow-notes div{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:12px 14px}
+.flow-notes span,.flow-notes small{display:block;font-size:11px;color:var(--muted)}.flow-notes strong{font-size:20px}
+.ledger-form{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:6px}
+.ledger-form [name=amount],.ledger-form [name=quantity]{width:120px}.ledger-form [name=memo]{flex:1;min-width:180px}
+.ledger-table{min-width:720px}
+@media(max-width:700px){.ledger-top{grid-template-columns:1fr}}
+[hidden]{display:none!important}

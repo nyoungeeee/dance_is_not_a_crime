@@ -306,3 +306,45 @@ test('탈퇴: 세션 무효, 대화 삭제, 주문 기록은 비식별로 남고
   assert.equal(back.searchParams.get('login'), 'new');
   assert.notEqual((await c.json('GET', '/api/me')).body.user.id, oldId);
 });
+
+test('정산 장부: 운영자만, 입금 확인 주문과 업체 결제·개인 자금으로 잔액 계산, 지운 내역은 합계에서 빠짐', async () => {
+  const user = new Client();
+  await user.login('5001');
+  await user.json('PATCH', '/api/me', { nickname: '장부손님' });
+  assert.equal((await user.json('GET', '/api/admin/ledger')).status, 403);
+  assert.equal((await user.json('POST', '/api/admin/ledger', { kind: 'advance', amount: 1, occurredAt: '2026-10-13T08:55:00+09:00' })).status, 403);
+
+  const admin = new Client();
+  await admin.login('9999');
+  const before = (await admin.json('GET', '/api/admin/ledger')).body.summary;
+  const o = (await user.json('POST', '/api/orders', ORDER)).body.order;
+  await admin.json('POST', `/api/admin/orders/${o.id}/status`, { status: 'paid' });
+
+  assert.equal((await admin.json('POST', '/api/admin/ledger', { kind: 'nope', amount: 1, occurredAt: '2026-10-13T08:55:00+09:00' })).status, 400);
+  assert.equal((await admin.json('POST', '/api/admin/ledger', { kind: 'advance', amount: -5, occurredAt: '2026-10-13T08:55:00+09:00' })).status, 400);
+  assert.equal((await admin.json('POST', '/api/admin/ledger', { kind: 'advance', amount: 5, occurredAt: 'x' })).status, 400);
+
+  const vendorAmount = o.totalAmount + 10600;
+  let r = await admin.json('POST', '/api/admin/ledger', { kind: 'vendor_payment', amount: vendorAmount, quantity: o.quantity + 2, memo: '1차 발주', occurredAt: '2026-10-13T08:55:00+09:00' });
+  assert.equal(r.status, 201);
+  r = await admin.json('POST', '/api/admin/ledger', { kind: 'advance', amount: 10600, quantity: 2, memo: '개인 자금', occurredAt: '2026-10-13T08:54:00+09:00' });
+  const advanceId = r.body.entry.id;
+
+  let s = (await admin.json('GET', '/api/admin/ledger')).body.summary;
+  assert.equal(s.orderIncome.amount - before.orderIncome.amount, o.totalAmount);
+  assert.equal(s.vendor.amount - before.vendor.amount, vendorAmount);
+  assert.equal(s.outstandingAdvance - before.outstandingAdvance, 10600);
+  assert.equal(s.balance, before.balance);
+  assert.equal(s.unmatchedQuantity - before.unmatchedQuantity, 2);
+
+  await admin.json('POST', '/api/admin/ledger', { kind: 'reimburse', amount: 5300, occurredAt: '2026-10-14T10:00:00+09:00' });
+  s = (await admin.json('GET', '/api/admin/ledger')).body.summary;
+  assert.equal(s.outstandingAdvance - before.outstandingAdvance, 5300);
+  assert.equal(s.balance - before.balance, -5300);
+
+  assert.equal((await admin.json('DELETE', `/api/admin/ledger/${advanceId}`)).status, 200);
+  assert.equal((await admin.json('DELETE', `/api/admin/ledger/${advanceId}`)).status, 404);
+  const after = (await admin.json('GET', '/api/admin/ledger')).body;
+  assert.ok(!after.entries.some((e: any) => e.id === advanceId));
+  assert.equal(after.summary.balance - before.balance, -15900);
+});

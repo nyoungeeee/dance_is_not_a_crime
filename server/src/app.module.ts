@@ -12,6 +12,7 @@ import { OrdersController } from './orders/orders.controller';
 import { MessagesService } from './messages/messages.service';
 import { MessagesController } from './messages/messages.controller';
 import { AdminController } from './admin/admin.controller';
+import { LedgerService } from './admin/ledger.service';
 
 @Controller('health')
 class HealthController {
@@ -36,6 +37,7 @@ class HealthController {
     AdminGuard,
     OrdersService,
     MessagesService,
+    LedgerService,
   ],
 })
 export class AppModule {}
