@@ -12,7 +12,7 @@
 ## 남은 작업
 
 - 운영 `.env` 작성(카카오 키, SESSION_SECRET, ADMIN_KAKAO_IDS) 후 실제 카카오 로그인 확인
-- 현장 수령 확인 절차(운영자가 `수령 완료`로 바꾸는 시점·방법)
+- 현장 수령: `/admin#pickup` 탭으로 처리(README 운영 절). 행사 전날 날짜별 인쇄용 명단을 뽑아 둔다.
 - 주문 기록 보관 기간과 탈퇴 후 처리 기준 확정(현재: 주문 기록은 닉네임 없이 보관)
 - 세종보헤미안뮤직페스티벌 수령 오픈 시 `EVENTS.sejong.available`을 서버·화면 모두 true로 변경
 - 자동 배포를 쓰려면 배포 키·GitHub Secrets·`DEPLOY_ENABLED` 설정(README 배포 절)
