@@ -175,4 +175,34 @@ export class OrdersService {
       return orderDto(updated);
     });
   }
+
+  /**
+   * 현장 수령: 한 사람의 주문 여러 건을 한 번에 from → to로 바꾼다. 전부 바뀌거나 하나도 안 바뀐다.
+   * 상태 조건을 UPDATE의 WHERE에 넣어서, 폰 두 대가 같은 주문을 동시에 눌러도 한 번만 처리된다.
+   * 전달: paid → picked_up (입금 확인 전·이미 수령·취소 주문은 거절), 되돌리기: picked_up → paid.
+   */
+  async adminPickup(adminUserId: number, orderIds: unknown, undo = false) {
+    if (!Array.isArray(orderIds) || !orderIds.length || orderIds.length > 20 || !orderIds.every((id) => typeof id === 'string')) {
+      fail(400, 'INVALID_ORDERS', '주문을 골라주세요.');
+    }
+    const ids = [...new Set(orderIds as string[])];
+    const [from, to, note] = undo ? (['picked_up', 'paid', '현장 수령 되돌리기'] as const) : (['paid', 'picked_up', '현장 수령'] as const);
+    return this.prisma.$transaction(async (tx) => {
+      for (const id of ids) {
+        const { count } = await tx.order.updateMany({ where: { id, status: from }, data: { status: to } });
+        if (count === 1) {
+          await this.log(tx, id, 'admin', adminUserId, from, to, note);
+          continue;
+        }
+        // 바꾸지 못한 이유를 알려주고 트랜잭션 전체를 되돌린다.
+        const order = await tx.order.findUnique({ where: { id } });
+        if (!order) fail(404, 'NO_ORDER', '주문을 찾을 수 없어요.');
+        if (undo) fail(409, 'NOT_PICKED_UP', `${id}는 수령 완료 상태가 아니에요. 새로고침해주세요.`);
+        if (order.status === 'picked_up') fail(409, 'ALREADY_PICKED_UP', `${id}는 이미 수령 완료된 주문이에요. 새로고침해주세요.`);
+        fail(409, 'NOT_PAID', `${id}는 입금 확인 완료 주문이 아니에요. 전달하지 마세요.`);
+      }
+      const orders = await tx.order.findMany({ where: { id: { in: ids } } });
+      return orders.map(orderDto);
+    });
+  }
 }
