@@ -1,6 +1,6 @@
 import {validateMessage} from './messages.mjs?v=24';
 import {EVENTS, validateNickname, validateOrder, pickupDateLabel} from './account-state.mjs?v=14';
-import {GROUP_BUY, ordersOpen, ORDER_STATUS, paymentWindowOpen, parseQuantity, orderAmount, getOrderCountdown} from './group-buy.mjs?v=15';
+import {GROUP_BUY, ordersOpen, ORDER_STATUS, paymentWindowOpen, parseQuantity, orderAmount, getOrderCountdown} from './group-buy.mjs?v=16';
 import {api} from './api.mjs?v=2';
 const $ = selector => document.querySelector(selector);
 const modal = $('#modal'), content = $('#modal-content'), form = $('#order-form');
@@ -226,6 +226,17 @@ function handleLoginReturn() {
   if(!me.user.nickname) {nicknameForm(true);return;}
   toast(`${nickname()} 님, 반가워요.`);
   continueIntent(loginIntent);
+}
+/** 사이트 진입 공지: 현장 수령 방법은 오픈카톡방에서 실시간으로 안내한다. '오늘 하루 보지 않기'는 이 브라우저에만 저장한다. */
+const NOTICE_KEY = 'pickup-notice-hidden';
+const todayKey = () => new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Seoul'});
+function pickupNotice({force = false} = {}) {
+  if(!force) {
+    if(modal.open || Date.now() > new Date(GROUP_BUY.pickupNoticeUntil).getTime()) return;
+    try {if(localStorage.getItem(NOTICE_KEY) === todayKey()) return;} catch {}
+  }
+  const chat = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3C6.5 3 2 6.4 2 10.6c0 2.7 1.8 5 4.5 6.4l-.9 3.5 4-2.4c.8.1 1.6.2 2.4.2 5.5 0 10-3.5 10-7.7S17.5 3 12 3Z"/></svg>';
+  openModal(`<div class="modal-label notice-label"><span class="live-dot" aria-hidden="true"></span>현장 수령 공지</div><h2 id="modal-title">수령 안내는<br>오픈카톡방에서 해요</h2><p class="notice-lead">경기인디뮤직페스티벌 현장 수령 방법은 <strong>오픈카톡방에서 실시간으로</strong> 안내할 예정이에요. 수령하시려면 오픈카톡방에 꼭 입장해주세요.</p><ol class="notice-steps"><li><span>행사장 밖</span><strong>집중 배포 시간</strong><em>하루 2회 정도</em></li><li><span>그 외 시간</span><strong>행사장 안 지정 장소</strong><em>운영자 최소 1명 상주</em></li></ol><p class="notice-caution">현장 상황에 따라 배포 방식이 바뀔 수 있어요. 원활한 배부를 위해 시간과 장소는 오픈카톡방 공지에서 꼭 확인해주세요.</p><a class="button kakao notice-openchat" href="${GROUP_BUY.openChatUrl}" target="_blank" rel="noopener">${chat}오픈카톡방 입장하기</a><div class="notice-footer"><button class="text-button" data-action="notice-hide-today">오늘 하루 보지 않기</button><button class="text-button" data-action="close">닫기</button></div>`);
 }
 function draftRecord() {const data = new FormData(form);return {quantity:parseQuantity($('#quantity').value), event:data.get('event'), payerName:data.get('payerName'), pickupDate:data.get('pickupDate')};}
 /** 주문 진행 단계. 끝난 단계는 done, 지금 기다리는 단계는 current. 취소 계열은 단계 대신 상태만 보여준다. */
@@ -454,6 +465,8 @@ document.addEventListener('click', event => {
       break;
     }
     case 'close': closeModal();break;
+    case 'notice-hide-today': try {localStorage.setItem(NOTICE_KEY, todayKey());} catch {} closeModal();break;
+    case 'notice': pickupNotice({force:true});break;
     case 'design': openModal(`<div class="modal-label">슬로건 디자인</div><h2 id="modal-title">춤은 불법이 아니다</h2><div class="design-gallery"><div class="towel-crop back"><img src="/assets/slogan.png" alt="춤추는 해골 패턴 면"></div><div class="towel-crop front"><img src="/assets/slogan.png" alt="춤은 불법이 아니다 문구 면"></div></div><p>소재·크기·인쇄 사양은 제작 조건 확인 후 안내할 예정이에요.</p>`, {wide:true});break;
     case 'share': share();break;
     case 'select-share': $('#share-link').focus();$('#share-link').select();break;
@@ -480,6 +493,7 @@ loadMe().then(() => {
   panelMode = me.orders.length ? 'list' : 'new';
   refresh();
   handleLoginReturn();
+  pickupNotice();
 });
 // 다른 기기에서 바뀐 주문 상태·새 답변을 가끔 다시 확인한다.
 document.addEventListener('visibilitychange',() => {updateCountdown();if(!document.hidden) loadMe();});

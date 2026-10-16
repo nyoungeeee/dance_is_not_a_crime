@@ -395,3 +395,18 @@ dialog::backdrop{background:#000b}
 @keyframes dance-note{to{transform:translateY(-3px) rotate(-12deg)}}
 @media(prefers-reduced-motion:reduce){.dance-prompt.is-playing .dance-prompt-icon{animation:none}}
 @media(max-width:700px){.dance-prompt{font-size:12px;padding:10px 12px;margin:12px 0 16px}}
+/* 사이트 진입 공지(현장 수령 안내) */
+.notice-label{display:flex;align-items:center;gap:9px;color:var(--lime);font-weight:700;letter-spacing:.2px}
+.modal-shell .notice-lead{font-size:13px;color:#d6dfc8}
+.notice-lead strong{color:var(--lime);font-weight:700}
+.notice-steps{list-style:none;margin:20px 0 0;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.notice-steps li{display:flex;flex-direction:column;gap:4px;padding:14px 14px 15px;border:1px solid #48513a;border-radius:4px;background:#191c15}
+.notice-steps span{font-size:10px;color:#a9b59a}
+.notice-steps strong{font-size:13px;color:var(--ink);letter-spacing:-.3px}
+.notice-steps em{font-style:normal;font-size:11px;color:var(--lime)}
+.modal-shell .notice-caution{margin:14px 0 0;padding:11px 13px;border-left:2px solid #fee500;background:#25251a;font-size:11px;line-height:1.7;color:#d9d6a8}
+.modal-shell .notice-openchat{margin-top:20px;font-size:13px}
+.notice-openchat svg{width:18px;height:18px;fill:currentColor}
+.notice-footer{display:flex;justify-content:space-between;margin-top:16px}
+.notice-footer .text-button{font-size:11px;color:#b5c0a6}
+@media(max-width:700px){.modal-shell .notice-lead{font-size:12px}.notice-steps li{padding:12px 11px 13px}.notice-steps strong{font-size:12px}.modal-shell .notice-caution{font-size:10px}}
