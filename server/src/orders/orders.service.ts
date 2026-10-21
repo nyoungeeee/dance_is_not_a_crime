@@ -70,7 +70,7 @@ export class OrdersService {
 
   /** 새 주문서 제출. 같은 requestKey로 다시 오면 이미 만든 주문을 돌려준다(중복 제출 방지). */
   async create(userId: number, nickname: string, body: unknown, now = new Date()) {
-    if (currentRound(now).accepting === false && roundOpen(currentRound(now).id, now)) fail(409, 'ORDERS_NOT_OPEN', '주문은 아직 열리지 않았어요. 오픈하면 오픈카톡방에서 알려드려요.');
+    if (currentRound(now).accepting === false && roundOpen(currentRound(now).id, now)) fail(409, 'ORDERS_NOT_OPEN', '주문은 아직 열리지 않았어요.');
     if (!ordersOpen(now)) fail(409, 'ORDERS_CLOSED', '주문 접수가 마감되었어요.');
     const round = currentRound(now);
     const input = validateOrderInput(body, round);
