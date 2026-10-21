@@ -150,7 +150,7 @@ export class OrdersService {
   async cancel(userId: number, orderId: string, now = new Date()) {
     return this.prisma.$transaction(async (tx) => {
       const order = await this.own(tx, userId, orderId);
-      if (['cancelled', 'cancel_requested', 'refunded', 'picked_up'].includes(order.status)) {
+      if (['cancelled', 'cancel_requested', 'refunded', 'picked_up', 'forfeited'].includes(order.status)) {
         fail(409, 'ORDER_LOCKED', '이미 취소되었거나 처리 중인 주문이에요.');
       }
       const status = order.status === 'payment_pending' && roundOpen(order.round, now) ? 'cancelled' : 'cancel_requested';

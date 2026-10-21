@@ -1,6 +1,6 @@
 import {api} from './api.mjs?v=2';
-import {EVENTS, pickupDateLabel} from './account-state.mjs?v=16';
-import {GROUP_BUY, CURRENT_ROUND, ORDER_STATUS} from './group-buy.mjs?v=19';
+import {EVENTS, pickupDateLabel} from './account-state.mjs?v=17';
+import {GROUP_BUY, CURRENT_ROUND, ORDER_STATUS} from './group-buy.mjs?v=20';
 // 운영자 화면. 권한은 서버가 검사한다(ADMIN_KAKAO_IDS). 이 파일은 공개돼도 데이터는 운영자에게만 내려온다.
 const $ = s => document.querySelector(s);
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -20,7 +20,7 @@ function toast(m) {$('#toast').textContent = m;$('#toast').classList.add('visibl
 
 for (const [value, label] of Object.entries(ORDER_STATUS)) $('#status-filter').insertAdjacentHTML('beforeend', `<option value="${value}">${label}</option>`);
 $('#round-filter').value = String(CURRENT_ROUND);
-const CLOSED = ['cancelled','refunded','picked_up'];
+const CLOSED = ['cancelled','refunded','picked_up','forfeited'];
 const ROUND_LABEL = {1:'1차 경기', 2:'2차 세종'};
 const roundFiltered = () => {const r = $('#round-filter').value;return r ? orders.filter(o => String(o.round) === r) : orders;};
 /** 1차(경기) 주문을 세종 수령일로 옮긴 것. 현장 수령·명단에서 구분해 보여준다. */
@@ -32,7 +32,8 @@ function renderSummary() {
   // 건수·진행 조건(50개)은 고른 차수 기준, 수령일별 수량은 차수와 상관없이(이월분 포함) 그날 나눠 줄 전체.
   const list = roundFiltered();
   const count = s => list.filter(o => o.status === s).length;
-  const paid = list.filter(o => ['paid','picked_up'].includes(o.status));
+  // 입금 확인 완료 합계에는 수령 포기(입금은 받음)도 넣는다. 수령일별 수량은 실제로 나눠 줄 것만.
+  const paid = list.filter(o => ['paid','picked_up','forfeited'].includes(o.status));
   const live = list.filter(o => !['cancelled','refunded'].includes(o.status));
   const byDate = {};
   for (const o of orders.filter(o => ['paid','picked_up'].includes(o.status))) {const k = `${EVENTS[o.event]?.name ?? o.event} ${pickupDateLabel(o.event, o.pickupDate)}`;byDate[k] = (byDate[k] || 0) + o.quantity;}

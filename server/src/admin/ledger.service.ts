@@ -14,7 +14,8 @@ export const LEDGER_KINDS = {
 export type LedgerKind = keyof typeof LEDGER_KINDS;
 
 /** 입금 확인된 것으로 셀 주문 상태. 환불된 주문은 들어왔다 나간 돈이라 빼고 센다. */
-const PAID_STATUSES = ['paid', 'picked_up'];
+// 수령 포기(forfeited)도 입금은 들어온 주문이라 주문 입금에 넣는다.
+const PAID_STATUSES = ['paid', 'picked_up', 'forfeited'];
 
 function entryDto(e: LedgerEntry) {
   return {

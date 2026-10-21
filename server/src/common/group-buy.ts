@@ -52,11 +52,13 @@ export const ORDER_STATUSES = [
   'cancelled',
   'refunded',
   'picked_up',
+  // 수령 포기: 입금은 확인됐지만 받지 않기로 한 주문(기부·나눔). 운영자만 바꾼다.
+  'forfeited',
 ] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
 /** 끝난 주문. 이 상태의 주문만 있으면 탈퇴할 수 있다. */
-export const CLOSED_STATUSES: readonly string[] = ['cancelled', 'refunded', 'picked_up'];
+export const CLOSED_STATUSES: readonly string[] = ['cancelled', 'refunded', 'picked_up', 'forfeited'];
 /** 사람당 동시에 진행할 수 있는 주문 수(장난·실수 방지). 끝난 주문은 세지 않는다. */
 export const MAX_OPEN_ORDERS = 10;
 

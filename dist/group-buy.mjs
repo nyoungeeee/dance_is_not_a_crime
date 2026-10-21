@@ -37,7 +37,7 @@ export function ordersOpen(now = new Date(), round = CURRENT_ROUND) {
 }
 /** 지금 차수가 아직 오픈 전인지(마감과 구분해서 안내한다). */
 export const ordersNotYetOpen = () => GROUP_BUY.accepting === false;
-export const ORDER_STATUS = Object.freeze({payment_pending:'입금 대기',verification_requested:'입금 확인 요청',paid:'입금 확인 완료',cancel_requested:'취소 확인 요청',cancelled:'취소됨',refunded:'환불 완료',picked_up:'수령 완료'});
+export const ORDER_STATUS = Object.freeze({payment_pending:'입금 대기',verification_requested:'입금 확인 요청',paid:'입금 확인 완료',cancel_requested:'취소 확인 요청',cancelled:'취소됨',refunded:'환불 완료',picked_up:'수령 완료',forfeited:'수령 포기'});
 
 export function paymentWindowOpen(now = new Date(), round = CURRENT_ROUND) {
   const time = new Date(now).getTime();
