@@ -151,7 +151,7 @@ function renderPickupStats() {
     ['입금 미확인', `${orders.filter(o => PENDING.includes(o.status)).length}건`, '전달 금지'],
   ].map(([k, v, sub]) => `<div><span>${esc(k)}</span><strong>${esc(v)}</strong><small>${esc(sub)}</small></div>`).join('');
 }
-/** 색은 두 가지만: 라임 = 누를 버튼, 빨강 = 주면 안 되는 것. 나머지는 흰색·회색. */
+/** 색은 두 가지만: 하늘색 = 누를 버튼, 빨강 = 주면 안 되는 것. 나머지는 흰색·회색. */
 function pickupCard(p) {
   const today = kstDay();
   const line = o => {
