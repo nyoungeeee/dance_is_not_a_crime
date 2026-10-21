@@ -8,7 +8,7 @@ import { UsersService } from './users.service';
 
 const STATE_COOKIE = 'dnc_oauth';
 /** 로그인 후 이어서 열 화면. 주소 대신 정해진 값만 받는다(오픈 리다이렉트 방지). */
-const INTENTS = new Set(['login', 'order', 'my', 'message', 'admin']);
+const INTENTS = new Set(['login', 'order', 'my', 'message', 'admin', 'notice']);
 
 function safeIntent(v: unknown): string {
   return typeof v === 'string' && INTENTS.has(v) ? v : 'login';

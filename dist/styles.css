@@ -418,3 +418,4 @@ dialog::backdrop{background:#000b}
 .notice-mine strong{display:block;color:var(--lime);font-weight:700}
 .modal-shell .notice-mine + .notice-openchat{margin-top:10px;width:100%}
 @media(max-width:700px){.modal-shell .notice-thanks{font-size:10px}.modal-shell .notice-mine{font-size:11px}}
+.pickup-info .pickup-notice-link{display:inline-block;margin-top:14px;cursor:pointer}

@@ -1,8 +1,8 @@
-import {GROUP_BUY} from './group-buy.mjs?v=15';
+import {GROUP_BUY} from './group-buy.mjs?v=18';
 // 화면에서 미리 안내하기 위한 검증. 실제 판단은 서버(server/src/common/group-buy.ts)가 한다.
 export const EVENTS = Object.freeze({
-  inmufe: {available:true,name: "경기인디뮤직페스티벌", fullName: "경기인디뮤직페스티벌", dates: [{value:'2026-10-17',label:'10/17(토)'},{value:'2026-10-18',label:'10/18(일)'}]},
-  sejong: {available:false,name: "세종보헤미안뮤직페스티벌", fullName: "세종보헤미안뮤직페스티벌", dates: [{value:'2026-10-30',label:'10/30(금)'},{value:'2026-10-31',label:'10/31(토)'},{value:'2026-11-01',label:'11/1(일)'}]},
+  inmufe: {name: "경기인디뮤직페스티벌", fullName: "경기인디뮤직페스티벌", dates: [{value:'2026-10-17',label:'10/17(토)'},{value:'2026-10-18',label:'10/18(일)'}]},
+  sejong: {name: "세종보헤미안뮤직페스티벌", fullName: "세종보헤미안뮤직페스티벌", dates: [{value:'2026-10-31',label:'10/31(토)'},{value:'2026-11-01',label:'11/1(일)'}]},
 });
 export function pickupDateLabel(event, date) {
   return EVENTS[event]?.dates.find(day => day.value === date)?.label || '수령일 선택 필요';
@@ -26,7 +26,7 @@ export function validateSurvey(value) {
 }
 export function validateOrder(value, options = {}) {
   const base = validateSurvey(value);
-  if (!options.allowUnavailable && EVENTS[base.event].available === false) throw new Error('세종보헤미안뮤직페스티벌 수령은 추후 오픈 예정이에요.');
+  if (!GROUP_BUY.events.includes(base.event)) throw new Error(`이번 공동구매는 ${GROUP_BUY.events.map(e => EVENTS[e].name).join(', ')} 수령만 받아요.`);
   const payerName = String(value.payerName ?? '').trim();
   if (!payerName || [...payerName].length > 40 || /[<>\u0000-\u001f]/u.test(payerName)) throw new Error('입금자명을 1~40자로 입력해주세요.');
   const pickupDate = validatePickupDate(base.event,value.pickupDate,options);
