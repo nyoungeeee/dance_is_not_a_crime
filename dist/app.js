@@ -236,10 +236,13 @@ function pickupNotice({force = false} = {}) {
     try {if(localStorage.getItem(NOTICE_KEY) === todayKey()) return;} catch {}
   }
   const chat = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3C6.5 3 2 6.4 2 10.6c0 2.7 1.8 5 4.5 6.4l-.9 3.5 4-2.4c.8.1 1.6.2 2.4.2 5.5 0 10-3.5 10-7.7S17.5 3 12 3Z"/></svg>';
-  // 로그인한 미수령자에게는 본인 주문과 문의창(개별 안내를 보낸 곳)으로 가는 버튼을 보여준다.
+  // 비로그인: 카카오 로그인으로 보낸다(돌아오면 이 공지가 다시 뜨며 본인 주문이 보인다).
+  // 로그인한 미수령자: 본인 주문과 문의창(개별 안내를 보낸 곳). 그 외: 오픈카톡방 공지.
   const mine = me.orders.filter(order => order.status === 'paid' && order.event === 'inmufe');
   const count = mine.reduce((sum, order) => sum + order.quantity, 0);
-  const action = mine.length
+  const action = !me.user
+    ? `<a class="button kakao notice-openchat" href="/api/auth/kakao/login">${chat}로그인하고 확인하기</a>`
+    : mine.length
     ? `<p class="notice-mine"><strong>${escapeHTML(nickname())} 님 주문 ${mine.length}건(${count}개)이 아직 수령 전이에요.</strong>문의창으로 보낸 안내를 확인하고 답변해주세요.</p><button class="button lime notice-openchat" data-action="message">문의창에서 답변하기</button>`
     : `<a class="button kakao notice-openchat" href="${GROUP_BUY.openChatUrl}" target="_blank" rel="noopener">${chat}오픈카톡방 공지 보기</a>`;
   openModal(`<div class="modal-label notice-label"><span class="live-dot" aria-hidden="true"></span>미수령 슬로건 안내</div><h2 id="modal-title">아직 못 받으셨다면<br>세종에서 받아 가세요</h2><p class="notice-lead">경기인디뮤직페스티벌에서 수령하지 않으신 슬로건은 <strong>아래 두 가지 중 하나</strong>로 처리해요. 미수령자분들께는 사이트 문의로 개별 안내를 보내드렸어요.</p><ol class="notice-steps"><li><span>1. 현장 수령</span><strong>세종보헤미안<br>10/31(토) · 11/1(일)</strong><em>지인 대리 수령 가능(주문 닉네임)</em></li><li><span>2. 기부</span><strong>환불 없이<br>기부 처리</strong><em>세종 관객·아티스트 또는 오방가르드 행사</em></li></ol><p class="notice-caution"><b>세종 수령을 원하시면 토요일·일요일 중 오실 날짜를 문의창에 꼭 적어주세요.</b> 세종에서도 수령하지 않으시면 자동으로 기부 처리돼요. 현장 수령이 원칙이라 택배 발송과 환불은 어려워요.</p><p class="notice-thanks">운영자와 도와준 지인들 모두 이익 없이 티켓값을 내고 공연 보는 시간을 쪼개 배부했어요. 미수령 건이 많아 오래 고민한 끝에 정한 방식이니 너그럽게 이해 부탁드려요.</p>${action}<div class="notice-footer"><button class="text-button" data-action="notice-hide-today">오늘 하루 보지 않기</button><button class="text-button" data-action="close">닫기</button></div>`);
