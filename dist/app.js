@@ -26,7 +26,7 @@ const formEvent = event => GROUP_BUY.events.includes(event) ? event : GROUP_BUY.
 /** 입금 확인된 주문에 붙이는 현장 배부 공지 오픈카톡방 버튼 */
 const openChatLink = () => `<a class="button secondary openchat-link" href="${GROUP_BUY.openChatUrl}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3C6.5 3 2 6.4 2 10.6c0 2.7 1.8 5 4.5 6.4l-.9 3.5 4-2.4c.8.1 1.6.2 2.4.2 5.5 0 10-3.5 10-7.7S17.5 3 12 3Z"/></svg>현장 배부 공지 오픈카톡방</a>`;
 /** 새 주문을 못 받을 때 안내: 오픈 전과 마감을 구분한다. */
-const closedMessage = () => ordersNotYetOpen() ? '2차 주문은 아직 열리지 않았어요. 오픈하면 오픈카톡방에서 알려드려요.' : '주문 접수가 마감되었어요.';
+const closedMessage = () => ordersNotYetOpen() ? '2차 주문은 아직 열리지 않았어요.' : '주문 접수가 마감되었어요.';
 const won = amount => `${amount.toLocaleString('ko-KR')}원`;
 async function loadMe() {
   try {me = await api('GET','/api/me');}
