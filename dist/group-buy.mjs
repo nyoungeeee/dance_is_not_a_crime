@@ -13,8 +13,8 @@ export const GROUP_BUY = Object.freeze({
   paymentDeadlineLabel: '10/13(화) 23:59',
   // 현장 배부 공지. index.html의 링크와 같은 주소
   openChatUrl: 'https://open.kakao.com/o/g384C4Ri',
-  // 사이트 진입 공지(현장 수령 안내)를 띄우는 마지막 시각: 경기인디뮤직페스티벌 둘째 날 끝
-  pickupNoticeUntil: '2026-10-18T23:59:59+09:00',
+  // 사이트 진입 공지(미수령분 세종 수령·기부 안내)를 띄우는 마지막 시각: 세종보헤미안뮤직페스티벌 마지막 날 끝
+  pickupNoticeUntil: '2026-11-01T23:59:59+09:00',
 });
 export function ordersOpen(now = new Date()) {
   const time = new Date(now).getTime();
