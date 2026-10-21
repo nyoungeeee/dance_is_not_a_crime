@@ -25,10 +25,12 @@ export interface Round {
   pickupTerms?: boolean;
   /** 주문서 제출 때 다음 청원(오방가르드·소규모 라이브 클럽 관련) 참여 동의를 받는 차수. */
   petitionPledge?: boolean;
+  /** false면 아직 새 주문을 받지 않는다(오픈 전). 열 때는 이 값을 지우고 dist/group-buy.mjs도 같이 바꾼다. */
+  accepting?: boolean;
 }
 export const ROUNDS: Round[] = [
   { id: 1, ordersCloseAt: new Date('2026-10-13T22:00:00+09:00'), paymentDeadline: new Date('2026-10-13T23:59:59.999+09:00'), events: ['inmufe'] },
-  { id: 2, ordersCloseAt: new Date('2026-10-25T22:00:00+09:00'), paymentDeadline: new Date('2026-10-25T23:59:59.999+09:00'), events: ['sejong'], pickupTerms: true, petitionPledge: true },
+  { id: 2, ordersCloseAt: new Date('2026-10-25T22:00:00+09:00'), paymentDeadline: new Date('2026-10-25T23:59:59.999+09:00'), events: ['sejong'], pickupTerms: true, petitionPledge: true, accepting: false },
 ];
 
 /** 지금 주문을 받는(또는 마지막으로 받은) 차수. */
@@ -58,9 +60,10 @@ export const CLOSED_STATUSES: readonly string[] = ['cancelled', 'refunded', 'pic
 /** 사람당 동시에 진행할 수 있는 주문 수(장난·실수 방지). 끝난 주문은 세지 않는다. */
 export const MAX_OPEN_ORDERS = 10;
 
-/** 새 주문을 받는 중인지. */
+/** 새 주문을 받는 중인지. 오픈 전(accepting: false) 차수는 받지 않는다. */
 export function ordersOpen(now = new Date()): boolean {
-  return roundOpen(currentRound(now).id, now);
+  const round = currentRound(now);
+  return round.accepting !== false && roundOpen(round.id, now);
 }
 
 export interface OrderInput {
