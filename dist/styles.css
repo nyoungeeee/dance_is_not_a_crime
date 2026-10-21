@@ -410,3 +410,11 @@ dialog::backdrop{background:#000b}
 .notice-footer{display:flex;justify-content:space-between;margin-top:16px}
 .notice-footer .text-button{font-size:11px;color:#b5c0a6}
 @media(max-width:700px){.modal-shell .notice-lead{font-size:12px}.notice-steps li{padding:12px 11px 13px}.notice-steps strong{font-size:12px}.modal-shell .notice-caution{font-size:10px}}
+/* 미수령 안내: 둘 중 하나 고르는 카드, 대리 수령 안내, 로그인한 미수령자 전용 문구 */
+.notice-steps strong{line-height:1.35}
+.modal-shell .notice-caution b{color:#fee500;font-weight:700}
+.modal-shell .notice-thanks{margin:12px 0 0;font-size:11px;line-height:1.7;color:#a9b59a}
+.modal-shell .notice-mine{margin:18px 0 0;font-size:12px;line-height:1.6;color:#d6dfc8}
+.notice-mine strong{display:block;color:var(--lime);font-weight:700}
+.modal-shell .notice-mine + .notice-openchat{margin-top:10px;width:100%}
+@media(max-width:700px){.modal-shell .notice-thanks{font-size:10px}.modal-shell .notice-mine{font-size:11px}}
