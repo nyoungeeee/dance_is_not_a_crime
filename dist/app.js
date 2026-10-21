@@ -482,6 +482,19 @@ document.addEventListener('click', event => {
         try {const {order} = await api('POST',`/api/orders/${encodeURIComponent(id)}/cancel`);replaceOrder(order);if(editingId === id) showPanel('list',{focus:false});refresh();await orderDetail(id);toast(order.status === 'cancelled' ? '주문을 취소했어요.' : '취소를 요청했어요. 운영자가 확인 후 처리해요.');}
         catch(error) {toast(error.message);await loadMe();}
       });break;
+    case 'play-video': {
+      // 누른 뒤에만 유튜브를 불러온다(자동재생 없음). 사이트 음악은 멈춘다.
+      const toggle = $('#music-toggle');
+      if(toggle?.getAttribute('aria-pressed') === 'true') toggle.click();
+      const frame = document.createElement('iframe');
+      frame.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(button.dataset.video)}?autoplay=1&rel=0&playsinline=1&enablejsapi=1`;
+      frame.title = button.getAttribute('aria-label').replace('영상 재생: ', '');
+      frame.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+      frame.referrerPolicy = 'strict-origin-when-cross-origin'; // 유튜브 플레이어는 출처(Referer)가 있어야 재생된다
+      frame.allowFullscreen = true;
+      button.replaceWith(frame);
+      break;
+    }
     case 'play-music': {
       // 하단 음악 플레이어를 켠다. 이미 재생 중이면 그대로 둔다.
       const toggle = $('#music-toggle');
@@ -509,8 +522,12 @@ function updateCountdown(now = new Date()) {
 }
 updateCountdown();
 setInterval(() => updateCountdown(),1000);
-// 음악이 재생 중이면 메인 이미지의 안내 음표가 같이 움직인다.
-new MutationObserver(() => $('.dance-prompt')?.classList.toggle('is-playing', $('#music-toggle').getAttribute('aria-pressed') === 'true')).observe($('#music-toggle'), {attributes:true, attributeFilter:['aria-pressed']});
+// 음악이 재생 중이면 메인 이미지의 안내 음표가 같이 움직인다. 음악을 켜면 재생 중인 소개 영상은 멈춘다.
+new MutationObserver(() => {
+  const playing = $('#music-toggle').getAttribute('aria-pressed') === 'true';
+  $('.dance-prompt')?.classList.toggle('is-playing', playing);
+  if(playing) $('.story-video iframe')?.contentWindow?.postMessage(JSON.stringify({event:'command', func:'pauseVideo', args:[]}), 'https://www.youtube-nocookie.com');
+}).observe($('#music-toggle'), {attributes:true, attributeFilter:['aria-pressed']});
 refresh();
 loadMe().then(() => {
   booted = true;
