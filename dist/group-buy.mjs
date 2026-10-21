@@ -9,6 +9,8 @@ export const ROUNDS = Object.freeze({
     ordersCloseAt: '2026-10-25T22:00:00+09:00', ordersCloseLabel: '10/25(일) 22:00',
     paymentDeadline: '2026-10-25T23:59:59.999+09:00', paymentDeadlineLabel: '10/25(일) 23:59',
     supplierOrderLabel: '10/26(월)', goodsArrivalLabel: '10/30(금)까지 예정', events: Object.freeze(['sejong']),
+    // false면 오픈 전(새 주문 안 받음). 서버 ROUNDS의 accepting과 같이 바꾼다.
+    accepting: false,
   }),
 });
 // 지금 주문을 받는 차수. 이 화면의 새 주문서·카운트다운·안내 문구는 이 차수 기준이다.
@@ -31,8 +33,10 @@ const roundOf = round => ROUNDS[round] ?? ROUNDS[CURRENT_ROUND];
 /** 그 차수(기본: 지금 차수)의 주문 접수가 열려 있는지. */
 export function ordersOpen(now = new Date(), round = CURRENT_ROUND) {
   const time = new Date(now).getTime();
-  return Number.isFinite(time) && time < new Date(roundOf(round).ordersCloseAt).getTime();
+  return roundOf(round).accepting !== false && Number.isFinite(time) && time < new Date(roundOf(round).ordersCloseAt).getTime();
 }
+/** 지금 차수가 아직 오픈 전인지(마감과 구분해서 안내한다). */
+export const ordersNotYetOpen = () => GROUP_BUY.accepting === false;
 export const ORDER_STATUS = Object.freeze({payment_pending:'입금 대기',verification_requested:'입금 확인 요청',paid:'입금 확인 완료',cancel_requested:'취소 확인 요청',cancelled:'취소됨',refunded:'환불 완료',picked_up:'수령 완료'});
 
 export function paymentWindowOpen(now = new Date(), round = CURRENT_ROUND) {

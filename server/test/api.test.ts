@@ -29,6 +29,8 @@ before(async () => {
   // 마감 동작은 '마감 후' 테스트가 이 마감 시각으로 확인한다.
   const { ROUNDS } = await import('../src/common/group-buy');
   ROUNDS[1].ordersCloseAt = new Date('2099-01-01T00:00:00+09:00');
+  // 오픈 전(accepting: false) 동작은 '오픈 전' 테스트가 따로 확인한다. 나머지 테스트는 열린 상태로 돈다.
+  ROUNDS[1].accepting = true;
   const { createApp } = await import('../src/main');
   ({ app } = await createApp());
   app.useLogger(false);
@@ -451,4 +453,21 @@ test('1차(경기) 주문: 마감된 차수라 수정·즉시 취소 불가, 운
 
   // 이월한 주문도 입금 확인 완료라 그대로 전달할 수 있다.
   assert.equal((await admin.json('POST', '/api/admin/pickup', { orderIds: [paid.id] })).status, 201);
+});
+
+test('오픈 전(accepting: false) 차수는 새 주문을 받지 않는다(서버가 막는다)', async () => {
+  const { ROUNDS } = await import('../src/common/group-buy');
+  const c = new Client();
+  await c.login('5501');
+  await c.json('PATCH', '/api/me', { nickname: '오픈대기' });
+  ROUNDS[1].accepting = false;
+  try {
+    const r = await c.json('POST', '/api/orders', { ...ORDER, requestKey: key() });
+    assert.equal(r.status, 409);
+    assert.equal(r.body.code, 'ORDERS_NOT_OPEN');
+    assert.match(r.body.message, /아직 열리지 않았어요/);
+  } finally {
+    ROUNDS[1].accepting = true;
+  }
+  assert.equal((await c.json('POST', '/api/orders', { ...ORDER, requestKey: key() })).status, 201);
 });

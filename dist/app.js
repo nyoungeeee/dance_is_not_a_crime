@@ -1,6 +1,6 @@
 import {validateMessage} from './messages.mjs?v=24';
-import {EVENTS, validateNickname, validateOrder, pickupDateLabel} from './account-state.mjs?v=15';
-import {GROUP_BUY, ROUNDS, ordersOpen, ORDER_STATUS, paymentWindowOpen, parseQuantity, orderAmount, getOrderCountdown} from './group-buy.mjs?v=18';
+import {EVENTS, validateNickname, validateOrder, pickupDateLabel} from './account-state.mjs?v=16';
+import {GROUP_BUY, ROUNDS, ordersOpen, ordersNotYetOpen, ORDER_STATUS, paymentWindowOpen, parseQuantity, orderAmount, getOrderCountdown} from './group-buy.mjs?v=19';
 import {api} from './api.mjs?v=2';
 const $ = selector => document.querySelector(selector);
 const modal = $('#modal'), content = $('#modal-content'), form = $('#order-form');
@@ -25,6 +25,8 @@ const roundOf = order => ROUNDS[order.round] ?? GROUP_BUY;
 const formEvent = event => GROUP_BUY.events.includes(event) ? event : GROUP_BUY.events[0];
 /** 입금 확인된 주문에 붙이는 현장 배부 공지 오픈카톡방 버튼 */
 const openChatLink = () => `<a class="button secondary openchat-link" href="${GROUP_BUY.openChatUrl}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3C6.5 3 2 6.4 2 10.6c0 2.7 1.8 5 4.5 6.4l-.9 3.5 4-2.4c.8.1 1.6.2 2.4.2 5.5 0 10-3.5 10-7.7S17.5 3 12 3Z"/></svg>현장 배부 공지 오픈카톡방</a>`;
+/** 새 주문을 못 받을 때 안내: 오픈 전과 마감을 구분한다. */
+const closedMessage = () => ordersNotYetOpen() ? '2차 주문은 아직 열리지 않았어요. 오픈하면 오픈카톡방에서 알려드려요.' : '주문 접수가 마감되었어요.';
 const won = amount => `${amount.toLocaleString('ko-KR')}원`;
 async function loadMe() {
   try {me = await api('GET','/api/me');}
@@ -94,13 +96,13 @@ function refresh() {
     $('#order-cards').innerHTML = me.orders.map(orderCard).join('');
     $('#openchat-notice').hidden = !me.orders.some(isPaid);
     $('#add-order').hidden = !open;
-    $('#order-list-note').textContent = open ? '주문마다 입금 안내가 따로 나와요. 각 주문 금액을 입금하고 입금 확인을 요청해주세요.' : '주문 접수가 마감되었어요. 주문 상태는 여기서 확인할 수 있어요.';
+    $('#order-list-note').textContent = open ? '주문마다 입금 안내가 따로 나와요. 각 주문 금액을 입금하고 입금 확인을 요청해주세요.' : `${closedMessage()} 주문 상태는 여기서 확인할 수 있어요.`;
   }
   const editing = panelMode === 'edit' ? findOrder(editingId) : null;
   $('#back-to-list').hidden = !hasOrders;
   $('#form-title').textContent = editing ? '주문서 수정' : hasOrders ? '추가 주문서' : '주문서 작성';
   $('#profile-status').textContent = !on ? '카카오 로그인 후 닉네임을 설정해주세요.' : editing ? `주문번호 ${editing.id}의 내용을 바꿔요.` : `${nickname()} 님의 주문서예요.`;
-  $('#submit-label').textContent = !open ? '주문 접수 마감' : !on ? '카카오 로그인하고 주문서 작성' : editing ? '수정 내용 저장' : '주문서 제출';
+  $('#submit-label').textContent = !open ? (ordersNotYetOpen() ? '주문 오픈 준비 중' : '주문 접수 마감') : !on ? '카카오 로그인하고 주문서 작성' : editing ? '수정 내용 저장' : '주문서 제출';
   $('#submit-order').disabled = !open;
   $('#submit-order').classList.toggle('kakao', !on);
   $('#submit-order').classList.toggle('primary', on);
@@ -296,7 +298,7 @@ async function submitOrder() {
 form.addEventListener('submit', event => {
   event.preventDefault();
   if(!form.reportValidity()) return;
-  if(!ordersOpen()) {toast('주문 접수가 마감되었어요.');refresh();return;}
+  if(!ordersOpen()) {toast(closedMessage());refresh();return;}
   if(!signedIn()) {me.user ? nicknameForm(true) : loginPrompt('order');return;}
   submitOrder();
 });
@@ -447,7 +449,7 @@ document.addEventListener('click', event => {
     case 'order-detail': orderDetail(id);break;
     case 'new-order':
       if(!signedIn()) {me.user ? nicknameForm(true) : loginPrompt('order');break;}
-      if(!ordersOpen()) {toast('주문 접수가 마감되었어요.');break;}
+      if(!ordersOpen()) {toast(closedMessage());break;}
       showPanel('new');break;
     case 'show-list': showPanel('list');break;
     case 'message': messages();break;
@@ -513,6 +515,12 @@ document.addEventListener('click', event => {
 
 let countdownClosed = null;
 function updateCountdown(now = new Date()) {
+  // 오픈 전에는 마감 카운트다운 대신 준비 중 안내만 보여준다.
+  const soon = ordersNotYetOpen();
+  $('#countdown-clock').hidden = soon;
+  $('#countdown-soon').hidden = !soon;
+  $('#order-countdown').querySelector('.countdown-heading span').textContent = soon ? '2차 주문 오픈 준비 중' : '주문 마감까지';
+  $('#order-countdown').querySelector('.countdown-heading time').hidden = soon;
   const time = getOrderCountdown(now);
   for(const unit of ['days','hours','minutes','seconds']) $(`#countdown-${unit}`).textContent=String(time[unit]).padStart(2,'0');
   $('#countdown-clock').setAttribute('aria-label',time.isClosed ? '주문 접수 마감' : `주문 마감까지 ${time.days}일 ${time.hours}시간 ${time.minutes}분 ${time.seconds}초 남음`);
