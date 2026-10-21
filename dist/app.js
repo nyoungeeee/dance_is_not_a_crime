@@ -1,6 +1,6 @@
 import {validateMessage} from './messages.mjs?v=24';
-import {EVENTS, validateNickname, validateOrder, pickupDateLabel} from './account-state.mjs?v=16';
-import {GROUP_BUY, ROUNDS, ordersOpen, ordersNotYetOpen, ORDER_STATUS, paymentWindowOpen, parseQuantity, orderAmount, getOrderCountdown} from './group-buy.mjs?v=19';
+import {EVENTS, validateNickname, validateOrder, pickupDateLabel} from './account-state.mjs?v=17';
+import {GROUP_BUY, ROUNDS, ordersOpen, ordersNotYetOpen, ORDER_STATUS, paymentWindowOpen, parseQuantity, orderAmount, getOrderCountdown} from './group-buy.mjs?v=20';
 import {api} from './api.mjs?v=2';
 const $ = selector => document.querySelector(selector);
 const modal = $('#modal'), content = $('#modal-content'), form = $('#order-form');
@@ -14,7 +14,7 @@ let requestKey = crypto.randomUUID();
 const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const signedIn = () => !!me.user?.nickname;
 const nickname = () => me.user?.nickname ?? null;
-const CLOSED = ['cancelled','refunded','picked_up'];
+const CLOSED = ['cancelled','refunded','picked_up','forfeited'];
 const findOrder = id => me.orders.find(order => order.id === id) ?? null;
 const openOrders = () => me.orders.filter(order => !CLOSED.includes(order.status));
 const isPaid = order => ['paid','picked_up'].includes(order.status);
@@ -265,7 +265,7 @@ function draftRecord() {const data = new FormData(form);return {quantity:parseQu
 /** 주문 진행 단계. 끝난 단계는 done, 지금 기다리는 단계는 current. 취소 계열은 단계 대신 상태만 보여준다. */
 const PROGRESS_STEPS = ['주문서 제출','입금 확인 요청','입금 확인 완료','현장 수령'];
 function orderProgress(record) {
-  if(['cancel_requested','cancelled','refunded'].includes(record.status)) return `<div class="order-progress is-cancel"><span>${ORDER_STATUS[record.status]}</span></div>`;
+  if(['cancel_requested','cancelled','refunded','forfeited'].includes(record.status)) return `<div class="order-progress is-cancel"><span>${ORDER_STATUS[record.status]}</span></div>`;
   const done = {payment_pending:1,verification_requested:2,paid:3,picked_up:4}[record.status] ?? 1;
   return `<div class="order-progress" aria-label="주문 진행 단계">${PROGRESS_STEPS.map((step, i) => i < done ? `<span class="done">✓ ${step}</span>` : i === done ? `<span class="current" aria-current="step">${i === 3 ? '현장 수령 대기' : step}</span>` : `<span>${step}</span>`).join('')}</div>`;
 }
@@ -314,11 +314,11 @@ async function orderDetail(id) {
   await withLoading('내 주문', loadMe);
   const order = findOrder(id);
   if(!order) {toast('주문을 찾을 수 없어요.');myOrders();return;}
-  const closed = ['cancelled','refunded'].includes(order.status);
+  const closed = ['cancelled','refunded','forfeited'].includes(order.status);
   const editable = orderOpen(order) && order.status === 'payment_pending';
   const needsDate = !order.pickupDate && orderOpen(order) && ['payment_pending','verification_requested'].includes(order.status);
-  const cancellable = !['cancelled','cancel_requested','refunded','picked_up'].includes(order.status);
-  const note = {payment_pending:'입금 후 \'입금 확인 요청\'을 눌러주세요. 요청만으로 주문이 확정되지는 않아요.',verification_requested:'운영자가 입금 내역을 확인하고 있어요. 확인되면 \'입금 확인 완료\'로 바뀌어요.',paid:'입금이 확인됐어요. 현장 배부 일정과 장소는 오픈카톡방에서 공지해요.',cancel_requested:'운영자가 취소와 환불 여부를 확인하고 있어요.',cancelled:'취소된 주문이에요.',refunded:'환불이 완료된 주문이에요.',picked_up:'수령이 완료된 주문이에요.'}[order.status] ?? '';
+  const cancellable = !['cancelled','cancel_requested','refunded','picked_up','forfeited'].includes(order.status);
+  const note = {payment_pending:'입금 후 \'입금 확인 요청\'을 눌러주세요. 요청만으로 주문이 확정되지는 않아요.',verification_requested:'운영자가 입금 내역을 확인하고 있어요. 확인되면 \'입금 확인 완료\'로 바뀌어요.',paid:'입금이 확인됐어요. 현장 배부 일정과 장소는 오픈카톡방에서 공지해요.',cancel_requested:'운영자가 취소와 환불 여부를 확인하고 있어요.',cancelled:'취소된 주문이에요.',refunded:'환불이 완료된 주문이에요.',picked_up:'수령이 완료된 주문이에요.',forfeited:'수령을 포기한 주문이에요. 슬로건은 기부·나눔으로 전해져요.'}[order.status] ?? '';
   const id_ = escapeHTML(order.id);
   openModal(`<div class="modal-label">내 주문</div><h2 id="modal-title">주문 내역</h2>${orderProgress(order)}${responseRows(order)}<p>${note}</p>${isPaid(order) ? openChatLink() : ''}<div class="modal-actions">${needsDate ? `<button class="button primary" data-action="pickup-date" data-id="${id_}">수령일 추가</button>` : ''}${editable ? `<button class="button primary" data-action="edit" data-id="${id_}">주문서 수정</button>` : ''}${!closed ? `<button class="button secondary" data-action="order" data-id="${id_}">입금 안내</button>` : ''}<button class="button secondary" data-action="my">주문 목록</button></div>${cancellable ? `<button class="danger-action" data-action="cancel-confirm" data-id="${id_}">${order.status === 'payment_pending' && orderOpen(order) ? '주문 취소' : '취소·환불 요청'}</button>` : ''}`);
 }
@@ -326,7 +326,7 @@ async function orderDetail(id) {
 const PAYMENT_BUTTON = {payment_pending:'입금했어요 · 입금 확인 요청',verification_requested:'입금 확인 중…',paid:'입금 확인 완료',cancel_requested:'취소 확인 중…',picked_up:'수령 완료'};
 function paymentGuide(id) {
   const record = signedIn() ? findOrder(id) : null;
-  if(!record || ['cancelled','refunded'].includes(record.status)) {myOrders();return;}
+  if(!record || ['cancelled','refunded','forfeited'].includes(record.status)) {myOrders();return;}
   const pending = record.status === 'payment_pending';
   const id_ = escapeHTML(record.id);
   const guide = {

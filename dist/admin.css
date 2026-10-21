@@ -27,7 +27,7 @@ th{font-size:11px;color:var(--muted);font-weight:600;background:#181c1e}
 td.num{text-align:right;font-variant-numeric:tabular-nums}
 .status{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;background:#252b2e;white-space:nowrap}
 .s-payment_pending{background:#26343b}.s-verification_requested{background:#2f2a4a;color:#c9b8ff}.s-paid{background:#17394a;color:var(--accent)}
-.s-cancel_requested{background:#4a2a17;color:#ffb27a}.s-cancelled,.s-refunded{background:#2b2b2b;color:#999}.s-picked_up{background:#1f3a3a;color:#8fe}
+.s-cancel_requested{background:#4a2a17;color:#ffb27a}.s-cancelled,.s-refunded,.s-forfeited{background:#2b2b2b;color:#999}.s-picked_up{background:#1f3a3a;color:#8fe}
 .act{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.act input{width:150px}
 details{margin-top:6px;font-size:11px;color:var(--muted)}details ol{margin:6px 0 0;padding-left:18px}
 .thread-layout{display:grid;grid-template-columns:280px 1fr;gap:16px;min-height:60vh}

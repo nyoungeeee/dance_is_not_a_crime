@@ -471,3 +471,23 @@ test('오픈 전(accepting: false) 차수는 새 주문을 받지 않는다(서�
   }
   assert.equal((await c.json('POST', '/api/orders', { ...ORDER, requestKey: key() })).status, 201);
 });
+
+test('수령 포기(forfeited): 운영자만, 끝난 주문(취소·전달·수령 변경 불가, 탈퇴 가능), 정산 입금에는 포함', async () => {
+  const user = new Client();
+  await user.login('5601');
+  await user.json('PATCH', '/api/me', { nickname: '기부할게요' });
+  const o = (await user.json('POST', '/api/orders', { ...ORDER, quantity: 2, requestKey: key() })).body.order;
+  const admin = new Client();
+  await admin.login('9999');
+  const income = async () => (await admin.json('GET', '/api/admin/ledger')).body.summary.orderIncome.amount;
+  await admin.json('POST', `/api/admin/orders/${o.id}/status`, { status: 'paid' });
+  const before = await income();
+  assert.equal((await user.json('POST', `/api/admin/orders/${o.id}/status`, { status: 'forfeited' })).status, 403);
+  const r = await admin.json('POST', `/api/admin/orders/${o.id}/status`, { status: 'forfeited', note: '문의로 기부 선택' });
+  assert.equal(r.body.order.status, 'forfeited');
+  assert.equal(await income(), before); // 입금은 받은 주문이라 그대로
+  assert.equal((await user.json('POST', `/api/orders/${o.id}/cancel`)).status, 409);
+  assert.equal((await admin.json('POST', '/api/admin/pickup', { orderIds: [o.id] })).status, 409);
+  assert.equal((await admin.json('POST', `/api/admin/orders/${o.id}/pickup`, { event: 'sejong', pickupDate: '2026-11-01' })).status, 409);
+  assert.equal((await user.json('DELETE', '/api/me')).status, 200);
+});
