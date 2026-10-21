@@ -340,7 +340,7 @@ dialog::backdrop{background:#000b}
 .order-card-top{display:flex;justify-content:space-between;align-items:center;gap:10px}
 .order-card-top strong{font-size:13px;letter-spacing:.2px}
 .order-badge{flex-shrink:0;font-size:10px;padding:3px 9px;border-radius:999px;background:#26343b;color:#afc6d2}
-.order-badge.s-verification_requested{background:#4a4413;color:#ffe97a}
+.order-badge.s-verification_requested{background:#2f2a4a;color:#c9b8ff}
 .order-badge.s-paid,.order-badge.s-picked_up{background:#243d4a;color:var(--accent)}
 .order-badge.s-cancel_requested{background:#4a2a17;color:#ffb27a}
 .order-badge.s-cancelled,.order-badge.s-refunded{background:#2b2b2b;color:#999}
@@ -404,7 +404,7 @@ dialog::backdrop{background:#000b}
 .notice-steps span{font-size:10px;color:#9aacb5}
 .notice-steps strong{font-size:13px;color:var(--ink);letter-spacing:-.3px}
 .notice-steps em{font-style:normal;font-size:11px;color:var(--accent)}
-.modal-shell .notice-caution{margin:14px 0 0;padding:11px 13px;border-left:2px solid #fee500;background:#1a2125;font-size:11px;line-height:1.7;color:#a8c9d9}
+.modal-shell .notice-caution{margin:14px 0 0;padding:11px 13px;border-left:2px solid var(--accent);background:#1a2125;font-size:11px;line-height:1.7;color:#a8c9d9}
 .modal-shell .notice-openchat{margin-top:20px;font-size:13px}
 .notice-openchat svg{width:18px;height:18px;fill:currentColor}
 .notice-footer{display:flex;justify-content:space-between;margin-top:16px}
@@ -412,7 +412,7 @@ dialog::backdrop{background:#000b}
 @media(max-width:700px){.modal-shell .notice-lead{font-size:12px}.notice-steps li{padding:12px 11px 13px}.notice-steps strong{font-size:12px}.modal-shell .notice-caution{font-size:10px}}
 /* 미수령 안내: 둘 중 하나 고르는 카드, 대리 수령 안내, 로그인한 미수령자 전용 문구 */
 .notice-steps strong{line-height:1.35}
-.modal-shell .notice-caution b{color:#fee500;font-weight:700}
+.modal-shell .notice-caution b{color:var(--accent);font-weight:700}
 .modal-shell .notice-thanks{margin:12px 0 0;font-size:11px;line-height:1.7;color:#9aacb5}
 .modal-shell .notice-mine{margin:18px 0 0;font-size:12px;line-height:1.6;color:#c8d7df}
 .notice-mine strong{display:block;color:var(--accent);font-weight:700}
