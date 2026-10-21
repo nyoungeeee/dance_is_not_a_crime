@@ -41,6 +41,8 @@ model Order {
   id          String    @id
   userId      Int
   requestKey  String?   @unique
+  /// 공동구매 차수(1: 경기, 2: 세종). src/common/group-buy.ts ROUNDS
+  round       Int       @default(1)
   nickname    String
   quantity    Int
   event       String

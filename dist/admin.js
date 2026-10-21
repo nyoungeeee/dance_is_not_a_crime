@@ -1,6 +1,6 @@
 import {api} from './api.mjs?v=2';
-import {EVENTS, pickupDateLabel} from './account-state.mjs?v=14';
-import {GROUP_BUY, ORDER_STATUS} from './group-buy.mjs?v=15';
+import {EVENTS, pickupDateLabel} from './account-state.mjs?v=16';
+import {GROUP_BUY, CURRENT_ROUND, ORDER_STATUS} from './group-buy.mjs?v=19';
 // 운영자 화면. 권한은 서버가 검사한다(ADMIN_KAKAO_IDS). 이 파일은 공개돼도 데이터는 운영자에게만 내려온다.
 const $ = s => document.querySelector(s);
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -19,31 +19,42 @@ async function busy(btn, task) {
 function toast(m) {$('#toast').textContent = m;$('#toast').classList.add('visible');clearTimeout(toastTimer);toastTimer = setTimeout(() => $('#toast').classList.remove('visible'), 3500);}
 
 for (const [value, label] of Object.entries(ORDER_STATUS)) $('#status-filter').insertAdjacentHTML('beforeend', `<option value="${value}">${label}</option>`);
+$('#round-filter').value = String(CURRENT_ROUND);
+const CLOSED = ['cancelled','refunded','picked_up'];
+const ROUND_LABEL = {1:'1차 경기', 2:'2차 세종'};
+const roundFiltered = () => {const r = $('#round-filter').value;return r ? orders.filter(o => String(o.round) === r) : orders;};
+/** 1차(경기) 주문을 세종 수령일로 옮긴 것. 현장 수령·명단에서 구분해 보여준다. */
+const carried = o => o.round === 1 && o.event !== 'inmufe';
+// 수령 변경에 고를 수 있는 모든 행사·날짜("행사|날짜")
+const PICKUP_CHOICES = Object.entries(EVENTS).flatMap(([event, e]) => e.dates.map(d => [`${event}|${d.value}`, `${e.name} ${d.label}`]));
 
 function renderSummary() {
-  const count = s => orders.filter(o => o.status === s).length;
-  const paid = orders.filter(o => ['paid','picked_up'].includes(o.status));
-  const live = orders.filter(o => !['cancelled','refunded'].includes(o.status));
+  // 건수·진행 조건(50개)은 고른 차수 기준, 수령일별 수량은 차수와 상관없이(이월분 포함) 그날 나눠 줄 전체.
+  const list = roundFiltered();
+  const count = s => list.filter(o => o.status === s).length;
+  const paid = list.filter(o => ['paid','picked_up'].includes(o.status));
+  const live = list.filter(o => !['cancelled','refunded'].includes(o.status));
   const byDate = {};
-  for (const o of paid) {const k = `${EVENTS[o.event]?.name ?? o.event} ${pickupDateLabel(o.event, o.pickupDate)}`;byDate[k] = (byDate[k] || 0) + o.quantity;}
+  for (const o of orders.filter(o => ['paid','picked_up'].includes(o.status))) {const k = `${EVENTS[o.event]?.name ?? o.event} ${pickupDateLabel(o.event, o.pickupDate)}`;byDate[k] = (byDate[k] || 0) + o.quantity;}
   $('#summary').innerHTML = [
     ['입금 확인 요청', `${count('verification_requested')}건`],
     ['입금 대기', `${count('payment_pending')}건`],
     ['취소 확인 요청', `${count('cancel_requested')}건`],
     ['진행 중 주문 수량 (최소 50개)', `${live.reduce((a, o) => a + o.quantity, 0)}개 / ${GROUP_BUY.minTotalQuantity}개`],
+    ['다음 청원 참여 동의', `${new Set(live.filter(o => o.logs.some(l => l.note?.includes('다음 청원 참여 동의'))).map(o => o.userId)).size}명`],
     ['입금 확인 완료', `${paid.length}건 · ${paid.reduce((a, o) => a + o.quantity, 0)}개 · ${won(paid.reduce((a, o) => a + o.totalAmount, 0))}`],
     ...Object.entries(byDate).map(([k, q]) => [`수령 ${k}`, `${q}개`]),
   ].map(([k, v]) => `<div><span>${esc(k)}</span><strong>${esc(v)}</strong></div>`).join('');
 }
 function renderOrders() {
   const status = $('#status-filter').value, q = $('#search').value.trim().toLowerCase();
-  const rows = orders.filter(o => (!status || o.status === status) && (!q || [o.id, o.nickname, o.payerName].some(v => v.toLowerCase().includes(q))));
+  const rows = roundFiltered().filter(o => (!status || o.status === status) && (!q || [o.id, o.nickname, o.payerName].some(v => v.toLowerCase().includes(q))));
   $('#order-rows').innerHTML = rows.map(o => `<tr data-id="${esc(o.id)}">
-    <td>${esc(o.id)}<details><summary>기록 ${o.logs.length}</summary><ol>${o.logs.map(l => `<li>${time(l.createdAt)} ${l.actor === 'admin' ? '운영자' : '사용자'} → ${esc(ORDER_STATUS[l.toStatus] ?? l.toStatus)}${l.note ? ` · ${esc(l.note)}` : ''}</li>`).join('')}</ol></details></td>
+    <td>${esc(o.id)} <small class="muted">${o.round}차</small><details><summary>기록 ${o.logs.length}</summary><ol>${o.logs.map(l => `<li>${time(l.createdAt)} ${l.actor === 'admin' ? '운영자' : '사용자'}${l.fromStatus === l.toStatus ? '' : ` → ${esc(ORDER_STATUS[l.toStatus] ?? l.toStatus)}`}${l.note ? ` · ${esc(l.note)}` : ''}</li>`).join('')}</ol></details></td>
     <td>${esc(o.nickname)}</td><td><strong>${esc(o.payerName)}</strong></td><td class="num">${o.quantity}</td><td class="num">${won(o.totalAmount)}</td>
-    <td>${esc(EVENTS[o.event]?.name ?? o.event)}<br><small class="muted">${esc(pickupDateLabel(o.event, o.pickupDate))}</small></td>
+    <td>${esc(EVENTS[o.event]?.name ?? o.event)}<br><small class="muted">${esc(pickupDateLabel(o.event, o.pickupDate))}${carried(o) ? ' · 1차 이월' : ''}</small></td>
     <td><span class="status s-${esc(o.status)}">${esc(ORDER_STATUS[o.status] ?? o.status)}</span></td><td>${time(o.createdAt)}</td>
-    <td><div class="act"><select aria-label="바꿀 상태">${Object.entries(ORDER_STATUS).map(([v, l]) => `<option value="${v}" ${v === o.status ? 'selected' : ''}>${l}</option>`).join('')}</select><input placeholder="메모 (예: 입금 확인)" maxlength="200" aria-label="메모"><button class="primary" data-save>저장</button></div></td>
+    <td><div class="act"><select aria-label="바꿀 상태">${Object.entries(ORDER_STATUS).map(([v, l]) => `<option value="${v}" ${v === o.status ? 'selected' : ''}>${l}</option>`).join('')}</select><input placeholder="메모 (예: 입금 확인)" maxlength="200" aria-label="메모"><button class="primary" data-save>저장</button></div>${CLOSED.includes(o.status) ? '' : `<div class="act move"><select aria-label="바꿀 수령일" data-pickup>${PICKUP_CHOICES.map(([v, l]) => `<option value="${v}" ${v === `${o.event}|${o.pickupDate}` ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select><button class="ghost" data-move>수령 변경</button></div>`}</td>
   </tr>`).join('') || '<tr><td colspan="9" class="muted">주문이 없어요.</td></tr>';
 }
 async function loadOrders() {
@@ -51,8 +62,21 @@ async function loadOrders() {
   renderSummary();renderOrders();renderPickup();
 }
 $('#status-filter').addEventListener('change', renderOrders);
+$('#round-filter').addEventListener('change', () => {renderSummary();renderOrders();});
 $('#search').addEventListener('input', renderOrders);
 $('#reload').addEventListener('click', () => loadOrders().then(() => toast('새로고침했어요.')).catch(e => toast(e.message)));
+// 수령 변경: 1차 경기 미수령분을 문의로 받은 세종 날짜로 옮길 때 쓴다. 메모 칸에 적은 내용이 기록에 같이 남는다.
+$('#order-rows').addEventListener('click', async e => {
+  const btn = e.target.closest('[data-move]');if (!btn) return;
+  const row = btn.closest('tr'), id = row.dataset.id, order = orders.find(o => o.id === id);
+  const [event, pickupDate] = row.querySelector('[data-pickup]').value.split('|'), note = row.querySelector('.act input').value;
+  if (event === order.event && pickupDate === order.pickupDate) {toast('바뀐 수령일이 없어요.');return;}
+  if (!confirm(`${id} (${order.nickname}, ${order.quantity}개, ${ORDER_STATUS[order.status]})\n${EVENTS[order.event]?.name ?? order.event} ${pickupDateLabel(order.event, order.pickupDate)} → ${EVENTS[event].name} ${pickupDateLabel(event, pickupDate)}\n수령일을 바꿀까요?`)) return;
+  await busy(btn, async () => {
+    try {await api('POST', `/api/admin/orders/${encodeURIComponent(id)}/pickup`, {event, pickupDate, note});await loadOrders();toast('수령일을 바꿨어요.');}
+    catch (err) {toast(err.message);}
+  });
+});
 $('#order-rows').addEventListener('click', async e => {
   const btn = e.target.closest('[data-save]');if (!btn) return;
   const row = btn.closest('tr'), id = row.dataset.id, status = row.querySelector('select').value, note = row.querySelector('input').value;
@@ -65,11 +89,11 @@ $('#order-rows').addEventListener('click', async e => {
   });
 });
 $('#csv').addEventListener('click', () => {
-  const head = ['주문번호','닉네임','입금자명','수량','금액','행사','수령일','상태','접수시각','수정시각'];
+  const head = ['주문번호','차수','닉네임','입금자명','수량','금액','행사','수령일','상태','접수시각','수정시각'];
   const cell = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const lines = [head, ...orders.map(o => [o.id, o.nickname, o.payerName, o.quantity, o.totalAmount, EVENTS[o.event]?.name ?? o.event, o.pickupDate ?? '', ORDER_STATUS[o.status] ?? o.status, time(o.createdAt), time(o.updatedAt)])].map(r => r.map(cell).join(','));
+  const lines = [head, ...roundFiltered().map(o => [o.id, ROUND_LABEL[o.round] ?? o.round, o.nickname, o.payerName, o.quantity, o.totalAmount, EVENTS[o.event]?.name ?? o.event, o.pickupDate ?? '', ORDER_STATUS[o.status] ?? o.status, time(o.createdAt), time(o.updatedAt)])].map(r => r.map(cell).join(','));
   const blob = new Blob(['﻿' + lines.join('\r\n')], {type:'text/csv;charset=utf-8'});
-  const a = Object.assign(document.createElement('a'), {href:URL.createObjectURL(blob), download:`orders-${new Date().toISOString().slice(0,10)}.csv`});
+  const a = Object.assign(document.createElement('a'), {href:URL.createObjectURL(blob), download:`orders${$('#round-filter').value ? `-${$('#round-filter').value}차` : ''}-${new Date().toISOString().slice(0,10)}.csv`});
   a.click();URL.revokeObjectURL(a.href);
 });
 
@@ -136,7 +160,7 @@ function pickupCard(p) {
       : PENDING.includes(o.status) ? ['is-stop', '입금 미확인 · 전달 금지']
       : o.status === 'paid' ? (o.pickupDate !== today ? ['is-other', '수령일이 오늘이 아님'] : ['', ''])
       : ['is-done', `${ORDER_STATUS[o.status] ?? o.status} · 전달 안 함`];
-    return `<li class="pk-line ${cls}"><code>${idHTML(o.id)}</code><span class="pk-date">${esc(pickupDateLabel(o.event, o.pickupDate))}</span><span class="pk-qty">${o.quantity}개</span>${note ? `<span class="pk-note">${esc(note)}</span>` : ''}</li>`;
+    return `<li class="pk-line ${cls}"><code>${idHTML(o.id)}</code><span class="pk-date">${esc(pickupDateLabel(o.event, o.pickupDate))}${carried(o) ? ' · 1차' : ''}</span><span class="pk-qty">${o.quantity}개</span>${note ? `<span class="pk-note">${esc(note)}</span>` : ''}</li>`;
   };
   const qty = sumQty(p.give), last = p.done.at(-1);
   // 데스크톱 카드 가운데: 닉네임·수령일·총 개수. 전달할 게 없으면 이미 받은 것 또는 입금 미확인 기준으로 보여준다.
@@ -250,7 +274,7 @@ $('#pk-undo').addEventListener('click', async e => {
 
 // 인쇄용 명단: 그날 수령분을 수량 많은 순 → 닉네임 순으로, 체크 칸과 함께. 인터넷이 끊겼을 때 쓰는 종이 백업.
 // 입금 미확인은 아래 따로 표(회색 바탕, 전달 금지). 수량이 바뀌는 줄에 두 줄 선을 그어 묶음을 나눈다.
-for (const e of Object.values(EVENTS).filter(e => e.available)) for (const d of e.dates) $('#pk-print-date').insertAdjacentHTML('beforeend', `<option value="${d.value}">${esc(e.name)} ${d.label}</option>`);
+for (const e of Object.values(EVENTS)) for (const d of e.dates) $('#pk-print-date').insertAdjacentHTML('beforeend', `<option value="${d.value}">${esc(e.name)} ${d.label}</option>`);
 {
   const today = kstDay(), opt = [...$('#pk-print-date').options].find(o => o.value >= today);
   if (opt) $('#pk-print-date').value = opt.value;
@@ -269,7 +293,7 @@ $('#pk-print').addEventListener('click', () => {
     const done = r.unpaid ? [] : r.list.filter(o => o.status === 'picked_up');
     const note = r.unpaid ? '전달 금지' : done.length ? `수령 ${time(pickedAt(done.at(-1)) ?? done.at(-1).updatedAt)}` : '';
     const cls = [r.unpaid && 'unpaid', i && list[i - 1].qty !== r.qty && 'qty-break'].filter(Boolean).join(' ');
-    return `<tr class="${cls}"><td class="box">${!r.unpaid && done.length === r.list.length ? '✔' : ''}</td><td>${esc(r.nickname)}</td><td>${esc(r.payer)}</td><td class="qty">${r.qty}</td><td class="note">${esc([...r.list.map(o => o.id), note].filter(Boolean).join(' / '))}</td></tr>`;
+    return `<tr class="${cls}"><td class="box">${!r.unpaid && done.length === r.list.length ? '✔' : ''}</td><td>${esc(r.nickname)}</td><td>${esc(r.payer)}</td><td class="qty">${r.qty}</td><td class="note">${esc([...r.list.map(o => carried(o) ? `${o.id}(1차)` : o.id), note].filter(Boolean).join(' / '))}</td></tr>`;
   }).join('')}</tbody></table>`;
   const paid = rows.filter(r => !r.unpaid), unpaid = rows.filter(r => r.unpaid);
   $('#print-sheet').innerHTML = `<h1>춤은 불법이 아니다 · ${esc($('#pk-print-date').selectedOptions[0].textContent)} 수령 명단</h1>

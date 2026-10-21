@@ -156,3 +156,4 @@ button.pk-action kbd{border-color:rgba(22,23,20,.35);color:#161714;font-weight:4
   .print-sheet th:not(.box),.print-sheet td:not(.box){padding:5px 12px}
   .print-sheet .qty{text-align:center}
 }
+.act.move{margin-top:6px}

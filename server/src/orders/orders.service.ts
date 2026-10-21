@@ -10,7 +10,10 @@ import {
   MAX_OPEN_ORDERS,
   ORDER_STATUSES,
   OrderStatus,
+  ROUNDS,
+  currentRound,
   ordersOpen,
+  roundOpen,
   validateOrderInput,
   validatePickupDate,
 } from '../common/group-buy';
@@ -20,6 +23,7 @@ type Tx = Parameters<Parameters<PrismaService['$transaction']>[0]>[0];
 export function orderDto(o: Order) {
   return {
     id: o.id,
+    round: o.round,
     nickname: o.nickname,
     quantity: o.quantity,
     event: o.event,
@@ -66,8 +70,13 @@ export class OrdersService {
 
   /** 새 주문서 제출. 같은 requestKey로 다시 오면 이미 만든 주문을 돌려준다(중복 제출 방지). */
   async create(userId: number, nickname: string, body: unknown, now = new Date()) {
+    if (currentRound(now).accepting === false && roundOpen(currentRound(now).id, now)) fail(409, 'ORDERS_NOT_OPEN', '주문은 아직 열리지 않았어요. 오픈하면 오픈카톡방에서 알려드려요.');
     if (!ordersOpen(now)) fail(409, 'ORDERS_CLOSED', '주문 접수가 마감되었어요.');
-    const input = validateOrderInput(body);
+    const round = currentRound(now);
+    const input = validateOrderInput(body, round);
+    const agree = body as { pickupTermsAgreed?: unknown; petitionPledged?: unknown } | null;
+    if (round.pickupTerms && agree?.pickupTermsAgreed !== true) fail(400, 'PICKUP_TERMS_REQUIRED', '수령 안내를 읽고 동의해주세요.');
+    if (round.petitionPledge && agree?.petitionPledged !== true) fail(400, 'PETITION_PLEDGE_REQUIRED', '다음 청원 참여에 동의해주세요.');
     const requestKey = requestKeyOf(body);
     return this.prisma.$transaction(async (tx) => {
       if (requestKey) {
@@ -82,6 +91,7 @@ export class OrdersService {
           id: newOrderId(),
           userId,
           requestKey,
+          round: round.id,
           nickname,
           ...input,
           unitPrice: GROUP_BUY.unitPrice,
@@ -89,17 +99,19 @@ export class OrdersService {
           status: 'payment_pending',
         },
       });
-      await this.log(tx, order.id, 'user', userId, null, 'payment_pending', '주문서 제출');
+      // 동의 항목은 주문 기록에 시각과 함께 남긴다(수령 안내: 미수령 시 택배·환불 불가의 근거, 청원: 다음 청원 때 안내할 사람).
+      const agreed = [round.pickupTerms && '수령 안내 동의', round.petitionPledge && '다음 청원 참여 동의'].filter(Boolean);
+      await this.log(tx, order.id, 'user', userId, null, 'payment_pending', ['주문서 제출', ...agreed].join(' · '));
       return { order: orderDto(order), created: true };
     });
   }
 
-  /** 주문서 수정: 마감 전, 입금 대기 상태에서만. */
+  /** 주문서 수정: 그 주문 차수의 마감 전, 입금 대기 상태에서만. */
   async update(userId: number, nickname: string, orderId: string, body: unknown, now = new Date()) {
-    if (!ordersOpen(now)) fail(409, 'ORDERS_CLOSED', '주문 접수가 마감되었어요.');
-    const input = validateOrderInput(body);
     return this.prisma.$transaction(async (tx) => {
       const order = await this.own(tx, userId, orderId);
+      if (!roundOpen(order.round, now)) fail(409, 'ORDERS_CLOSED', '주문 접수가 마감되었어요.');
+      const input = validateOrderInput(body, ROUNDS.find((r) => r.id === order.round)!);
       if (order.status !== 'payment_pending') fail(409, 'ORDER_LOCKED', '입금 확인 요청 이후에는 주문서를 수정할 수 없어요.');
       const updated = await tx.order.update({
         where: { id: orderId },
@@ -113,10 +125,9 @@ export class OrdersService {
   async setPickupDate(userId: number, orderId: string, date: unknown, now = new Date()) {
     return this.prisma.$transaction(async (tx) => {
       const order = await this.own(tx, userId, orderId);
-      if (!ordersOpen(now) || !['payment_pending', 'verification_requested'].includes(order.status)) {
+      if (!roundOpen(order.round, now) || !['payment_pending', 'verification_requested'].includes(order.status)) {
         fail(409, 'ORDER_LOCKED', '현재 상태에서는 수령일을 바꿀 수 없어요.');
       }
-      if (!EVENTS[order.event]?.available) fail(400, 'EVENT_UNAVAILABLE', '세종보헤미안뮤직페스티벌 수령은 추후 오픈 예정이에요.');
       const pickupDate = validatePickupDate(order.event, date);
       const updated = await tx.order.update({ where: { id: orderId }, data: { pickupDate } });
       await this.log(tx, orderId, 'user', userId, order.status, order.status, `수령일 ${pickupDate}`);
@@ -142,7 +153,7 @@ export class OrdersService {
       if (['cancelled', 'cancel_requested', 'refunded', 'picked_up'].includes(order.status)) {
         fail(409, 'ORDER_LOCKED', '이미 취소되었거나 처리 중인 주문이에요.');
       }
-      const status = order.status === 'payment_pending' && ordersOpen(now) ? 'cancelled' : 'cancel_requested';
+      const status = order.status === 'payment_pending' && roundOpen(order.round, now) ? 'cancelled' : 'cancel_requested';
       const updated = await tx.order.update({ where: { id: orderId }, data: { status } });
       await this.log(tx, orderId, 'user', userId, order.status, status);
       return orderDto(updated);
@@ -172,6 +183,27 @@ export class OrdersService {
       if (!order) fail(404, 'NO_ORDER', '주문을 찾을 수 없어요.');
       const updated = await tx.order.update({ where: { id: orderId }, data: { status: status as OrderStatus } });
       await this.log(tx, orderId, 'admin', adminUserId, order.status, status, memo || undefined);
+      return orderDto(updated);
+    });
+  }
+
+  /**
+   * 수령 행사·날짜 변경(예: 1차 경기 미수령분을 세종으로 이월). 차수·수량·금액·상태는 그대로 두고 기록을 남긴다.
+   * 이미 끝난 주문(취소·환불·수령 완료)은 바꾸지 않는다.
+   */
+  async adminSetPickup(adminUserId: number, orderId: string, event: unknown, pickupDate: unknown, note: unknown) {
+    if (typeof event !== 'string' || !Object.hasOwn(EVENTS, event)) fail(400, 'INVALID_EVENT', '수령할 행사를 골라주세요.');
+    const date = validatePickupDate(event, pickupDate);
+    const memo = typeof note === 'string' ? note.trim().slice(0, 200) : '';
+    const label = (e: string, d: string | null) => `${EVENTS[e]?.name ?? e} ${d ?? '수령일 없음'}`;
+    return this.prisma.$transaction(async (tx) => {
+      const order = await tx.order.findUnique({ where: { id: orderId } });
+      if (!order) fail(404, 'NO_ORDER', '주문을 찾을 수 없어요.');
+      if (CLOSED_STATUSES.includes(order.status)) fail(409, 'ORDER_LOCKED', '취소·환불·수령 완료된 주문은 수령일을 바꿀 수 없어요.');
+      if (order.event === event && order.pickupDate === date) fail(409, 'NO_CHANGE', '이미 그 수령일이에요.');
+      const updated = await tx.order.update({ where: { id: orderId }, data: { event, pickupDate: date } });
+      const change = `수령 변경 ${label(order.event, order.pickupDate)} → ${label(event, date)}`;
+      await this.log(tx, orderId, 'admin', adminUserId, order.status, order.status, memo ? `${change} · ${memo}` : change);
       return orderDto(updated);
     });
   }

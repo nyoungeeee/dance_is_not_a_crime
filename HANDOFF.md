@@ -14,7 +14,9 @@
 - 운영 `.env` 작성(카카오 키, SESSION_SECRET, ADMIN_KAKAO_IDS) 후 실제 카카오 로그인 확인
 - 현장 수령: `/admin#pickup` 탭으로 처리(README 운영 절). 행사 전날 날짜별 인쇄용 명단을 뽑아 둔다.
 - 주문 기록 보관 기간과 탈퇴 후 처리 기준 확정(현재: 주문 기록은 닉네임 없이 보관)
-- 세종보헤미안뮤직페스티벌 수령 오픈 시 `EVENTS.sejong.available`을 서버·화면 모두 true로 변경
+- 2차(세종) 주문은 아직 막혀 있다(`accepting: false`, README '주문 오픈 스위치'). 열 때 그 값을 지우는 PR을 머지하면 배포된다.
+- 2차(세종) 공동구매 일정: 10/25(일) 22:00 마감 → 10/26(월) 발주 → 10/31·11/1 수령. 1차 미수령분은 주문 탭 '1차 경기' 필터에서 '수령 변경'으로 세종 날짜로 옮긴다.
+- 업체 상품 도착일은 화면에 '10/30(금)까지 예정'으로 적었다. 업체 일정이 확정되면 `index.html`·`dist/group-buy.mjs`(`goodsArrivalLabel`)를 고친다.
 - 자동 배포를 쓰려면 배포 키·GitHub Secrets·`DEPLOY_ENABLED` 설정(README 배포 절)
 
 ## 구현 세부

@@ -1,6 +1,6 @@
 import {validateMessage} from './messages.mjs?v=24';
-import {EVENTS, validateNickname, validateOrder, pickupDateLabel} from './account-state.mjs?v=14';
-import {GROUP_BUY, ordersOpen, ORDER_STATUS, paymentWindowOpen, parseQuantity, orderAmount, getOrderCountdown} from './group-buy.mjs?v=17';
+import {EVENTS, validateNickname, validateOrder, pickupDateLabel} from './account-state.mjs?v=16';
+import {GROUP_BUY, ROUNDS, ordersOpen, ordersNotYetOpen, ORDER_STATUS, paymentWindowOpen, parseQuantity, orderAmount, getOrderCountdown} from './group-buy.mjs?v=19';
 import {api} from './api.mjs?v=2';
 const $ = selector => document.querySelector(selector);
 const modal = $('#modal'), content = $('#modal-content'), form = $('#order-form');
@@ -18,8 +18,15 @@ const CLOSED = ['cancelled','refunded','picked_up'];
 const findOrder = id => me.orders.find(order => order.id === id) ?? null;
 const openOrders = () => me.orders.filter(order => !CLOSED.includes(order.status));
 const isPaid = order => ['paid','picked_up'].includes(order.status);
+/** 주문 수정·즉시 취소·수령일 변경은 그 주문이 속한 차수의 마감을 따른다(1차 주문은 2차가 열려 있어도 마감). */
+const orderOpen = order => ordersOpen(new Date(), order.round);
+const roundOf = order => ROUNDS[order.round] ?? GROUP_BUY;
+/** 새 주문서에서 고를 수 있는 행사(지금 차수). 다른 행사 주문을 바탕으로 새 주문서를 채울 때는 이 차수 행사로 바꾼다. */
+const formEvent = event => GROUP_BUY.events.includes(event) ? event : GROUP_BUY.events[0];
 /** 입금 확인된 주문에 붙이는 현장 배부 공지 오픈카톡방 버튼 */
 const openChatLink = () => `<a class="button secondary openchat-link" href="${GROUP_BUY.openChatUrl}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3C6.5 3 2 6.4 2 10.6c0 2.7 1.8 5 4.5 6.4l-.9 3.5 4-2.4c.8.1 1.6.2 2.4.2 5.5 0 10-3.5 10-7.7S17.5 3 12 3Z"/></svg>현장 배부 공지 오픈카톡방</a>`;
+/** 새 주문을 못 받을 때 안내: 오픈 전과 마감을 구분한다. */
+const closedMessage = () => ordersNotYetOpen() ? '2차 주문은 아직 열리지 않았어요. 오픈하면 오픈카톡방에서 알려드려요.' : '주문 접수가 마감되었어요.';
 const won = amount => `${amount.toLocaleString('ko-KR')}원`;
 async function loadMe() {
   try {me = await api('GET','/api/me');}
@@ -89,13 +96,13 @@ function refresh() {
     $('#order-cards').innerHTML = me.orders.map(orderCard).join('');
     $('#openchat-notice').hidden = !me.orders.some(isPaid);
     $('#add-order').hidden = !open;
-    $('#order-list-note').textContent = open ? '주문마다 입금 안내가 따로 나와요. 각 주문 금액을 입금하고 입금 확인을 요청해주세요.' : '주문 접수가 마감되었어요. 주문 상태는 여기서 확인할 수 있어요.';
+    $('#order-list-note').textContent = open ? '주문마다 입금 안내가 따로 나와요. 각 주문 금액을 입금하고 입금 확인을 요청해주세요.' : `${closedMessage()} 주문 상태는 여기서 확인할 수 있어요.`;
   }
   const editing = panelMode === 'edit' ? findOrder(editingId) : null;
   $('#back-to-list').hidden = !hasOrders;
   $('#form-title').textContent = editing ? '주문서 수정' : hasOrders ? '추가 주문서' : '주문서 작성';
   $('#profile-status').textContent = !on ? '카카오 로그인 후 닉네임을 설정해주세요.' : editing ? `주문번호 ${editing.id}의 내용을 바꿔요.` : `${nickname()} 님의 주문서예요.`;
-  $('#submit-label').textContent = !open ? '주문 접수 마감' : !on ? '카카오 로그인하고 주문서 작성' : editing ? '수정 내용 저장' : '주문서 제출';
+  $('#submit-label').textContent = !open ? (ordersNotYetOpen() ? '주문 오픈 준비 중' : '주문 접수 마감') : !on ? '카카오 로그인하고 주문서 작성' : editing ? '수정 내용 저장' : '주문서 제출';
   $('#submit-order').disabled = !open;
   $('#submit-order').classList.toggle('kakao', !on);
   $('#submit-order').classList.toggle('primary', on);
@@ -105,24 +112,25 @@ function refresh() {
 }
 function pickupDayChoices(event, selectedDate = null, name = 'pickupDate') {
   if(!Object.hasOwn(EVENTS,event)) return '<p class="field-hint">수령할 행사를 먼저 선택해주세요.</p>';
-  if(EVENTS[event].available === false) return '<p class="field-hint">세종보헤미안뮤직페스티벌 수령은 추후 오픈 예정이에요.</p>';
   return EVENTS[event].dates.map(day => `<label><input type="radio" name="${name}" value="${day.value}" required ${day.value === selectedDate ? 'checked' : ''}><span>${day.label}</span></label>`).join('');
 }
 function renderPickupDays(event, selectedDate = null) {
   $('#pickup-date-options').innerHTML = pickupDayChoices(event, selectedDate);
 }
-form.querySelectorAll('[name="event"]').forEach(input => input.addEventListener('change', () => {if(EVENTS[input.value]?.available !== false) renderPickupDays(input.value);}));
+form.querySelectorAll('[name="event"]').forEach(input => input.addEventListener('change', () => renderPickupDays(input.value)));
 function setDraft(record) {
   quantity = record.quantity ?? 1;
-  const selectedEvent = EVENTS[record.event]?.available === false ? null : record.event;
-  form.elements.event.value = selectedEvent || '';
-  renderPickupDays(selectedEvent,record.pickupDate);
+  const selectedEvent = formEvent(record.event);
+  form.elements.event.value = selectedEvent;
+  renderPickupDays(selectedEvent, selectedEvent === record.event ? record.pickupDate : null);
   $('#payer-name').value = record.payerName || '';
   $('#consent').checked = false;
+  $('#pickup-terms').checked = false;
+  $('#petition-pledge').checked = false;
   refreshQuantity();
 }
 function clearDraft() {
-  form.reset(); quantity = 1;renderPickupDays(null);
+  form.reset(); quantity = 1;renderPickupDays(form.elements.event.value || null);
   refreshQuantity();
 }
 function changeQuantity(delta) {
@@ -191,6 +199,7 @@ function continueIntent(intent) {
   else if(intent === 'my') myOrders();
   else if(intent === 'message') messages();
   else if(intent === 'admin') location.href = '/admin';
+  else if(intent === 'notice') pickupNotice({force:true});
 }
 function nicknameForm(isNew = false) {
   if(!me.user) {loginPrompt();return;}
@@ -227,25 +236,30 @@ function handleLoginReturn() {
   toast(`${nickname()} 님, 반가워요.`);
   continueIntent(loginIntent);
 }
-/** 사이트 진입 공지: 경기인디뮤직페스티벌 미수령분은 세종 현장 수령 또는 기부로 처리한다. '오늘 하루 보지 않기'는 이 브라우저에만 저장한다. */
+/**
+ * 1차 미수령 안내: 경기인디뮤직페스티벌 미수령분은 세종 현장 수령 또는 기부로 처리한다.
+ * 2차 주문을 받는 동안에는 아직 경기 수령일로 남은 입금 확인 주문이 있는 사람에게만 자동으로 띄운다(운영자가 세종으로 옮기면 더 뜨지 않는다).
+ * 그 밖의 방문자는 주문 안내의 '경기 미수령 안내' 버튼으로 연다. '오늘 하루 보지 않기'는 이 브라우저에만 저장한다.
+ */
 const NOTICE_KEY = 'unclaimed-notice-hidden';
 const todayKey = () => new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Seoul'});
+const unclaimed = () => me.orders.filter(order => order.status === 'paid' && order.event === 'inmufe');
 function pickupNotice({force = false} = {}) {
   if(!force) {
-    if(modal.open || Date.now() > new Date(GROUP_BUY.pickupNoticeUntil).getTime()) return;
+    if(modal.open || !unclaimed().length || Date.now() > new Date(GROUP_BUY.pickupNoticeUntil).getTime()) return;
     try {if(localStorage.getItem(NOTICE_KEY) === todayKey()) return;} catch {}
   }
   const chat = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3C6.5 3 2 6.4 2 10.6c0 2.7 1.8 5 4.5 6.4l-.9 3.5 4-2.4c.8.1 1.6.2 2.4.2 5.5 0 10-3.5 10-7.7S17.5 3 12 3Z"/></svg>';
   // 비로그인: 카카오 로그인으로 보낸다(돌아오면 이 공지가 다시 뜨며 본인 주문이 보인다).
   // 로그인한 미수령자: 본인 주문과 문의창(개별 안내를 보낸 곳). 그 외: 오픈카톡방 공지.
-  const mine = me.orders.filter(order => order.status === 'paid' && order.event === 'inmufe');
+  const mine = unclaimed();
   const count = mine.reduce((sum, order) => sum + order.quantity, 0);
   const action = !me.user
-    ? `<a class="button kakao notice-openchat" href="/api/auth/kakao/login">${chat}로그인하고 확인하기</a>`
+    ? `<a class="button kakao notice-openchat" href="/api/auth/kakao/login?intent=notice">${chat}로그인하고 확인하기</a>`
     : mine.length
     ? `<p class="notice-mine"><strong>${escapeHTML(nickname())} 님 주문 ${mine.length}건(${count}개)이 아직 수령 전이에요.</strong>문의창으로 보낸 안내를 확인하고 답변해주세요.</p><button class="button lime notice-openchat" data-action="message">문의창에서 답변하기</button>`
     : `<a class="button kakao notice-openchat" href="${GROUP_BUY.openChatUrl}" target="_blank" rel="noopener">${chat}오픈카톡방 공지 보기</a>`;
-  openModal(`<div class="modal-label notice-label"><span class="live-dot" aria-hidden="true"></span>미수령 슬로건 안내</div><h2 id="modal-title">아직 못 받으셨다면<br>세종에서 받아 가세요</h2><p class="notice-lead">경기인디뮤직페스티벌에서 수령하지 않으신 슬로건은 <strong>아래 두 가지 중 하나</strong>로 처리해요. 미수령자분들께는 사이트 문의로 개별 안내를 보내드렸어요.</p><ol class="notice-steps"><li><span>1. 현장 수령</span><strong>세종보헤미안<br>10/31(토) · 11/1(일)</strong><em>지인 대리 수령 가능(주문 닉네임)</em></li><li><span>2. 기부</span><strong>환불 없이<br>기부 처리</strong><em>세종 관객·아티스트 또는 오방가르드 행사</em></li></ol><p class="notice-caution"><b>세종 수령을 원하시면 토요일·일요일 중 오실 날짜를 문의창에 꼭 적어주세요.</b> 세종에서도 수령하지 않으시면 자동으로 기부 처리돼요. 현장 수령이 원칙이라 택배 발송과 환불은 어려워요.</p><p class="notice-thanks">운영자와 도와준 지인들 모두 이익 없이 티켓값을 내고 공연 보는 시간을 쪼개 배부했어요. 미수령 건이 많아 오래 고민한 끝에 정한 방식이니 너그럽게 이해 부탁드려요.</p>${action}<div class="notice-footer"><button class="text-button" data-action="notice-hide-today">오늘 하루 보지 않기</button><button class="text-button" data-action="close">닫기</button></div>`);
+  openModal(`<div class="modal-label notice-label"><span class="live-dot" aria-hidden="true"></span>미수령 슬로건 안내</div><h2 id="modal-title">아직 못 받으셨다면<br>세종에서 받아 가세요</h2><p class="notice-lead">경기인디뮤직페스티벌에서 수령하지 않으신 슬로건은 <strong>아래 두 가지 중 하나</strong>로 처리해요. 미수령자분들께는 사이트 문의로 개별 안내를 보내드렸어요.</p><ol class="notice-steps"><li><span>1. 현장 수령</span><strong>세종보헤미안<br>10/31(토) · 11/1(일)</strong><em>12:00–14:00 · 공연 사이 20분(토 19:45–20:05, 일 19:35–19:55)<br>지인 대리 수령 가능(주문 닉네임)</em></li><li><span>2. 기부</span><strong>환불 없이<br>기부 처리</strong><em>세종 관객·아티스트 또는 오방가르드 행사</em></li></ol><p class="notice-caution"><b>세종 수령을 원하시면 토요일·일요일 중 오실 날짜를 문의창에 꼭 적어주세요.</b> 세종에서도 수령하지 않으시면 자동으로 기부 처리돼요. 현장 수령이 원칙이라 택배 발송과 환불은 어려워요.</p><p class="notice-thanks">운영자와 도와준 지인들 모두 이익 없이 티켓값을 내고 공연 보는 시간을 쪼개 배부했어요. 미수령 건이 많아 오래 고민한 끝에 정한 방식이니 너그럽게 이해 부탁드려요.</p>${action}<div class="notice-footer"><button class="text-button" data-action="notice-hide-today">오늘 하루 보지 않기</button><button class="text-button" data-action="close">닫기</button></div>`);
 }
 function draftRecord() {const data = new FormData(form);return {quantity:parseQuantity($('#quantity').value), event:data.get('event'), payerName:data.get('payerName'), pickupDate:data.get('pickupDate')};}
 /** 주문 진행 단계. 끝난 단계는 done, 지금 기다리는 단계는 current. 취소 계열은 단계 대신 상태만 보여준다. */
@@ -261,6 +275,9 @@ function responseRows(record) {
 async function submitOrder() {
   let record;
   try {record = validateOrder(draftRecord());} catch(error) {toast(error.message);return;}
+  // 수령 안내 동의(2차). 서버도 확인하고 주문 기록에 남긴다.
+  record.pickupTermsAgreed = $('#pickup-terms').checked;
+  record.petitionPledged = $('#petition-pledge').checked;
   const editing = panelMode === 'edit' ? editingId : null;
   await busy($('#submit-order'), async () => {
     try {
@@ -281,7 +298,7 @@ async function submitOrder() {
 form.addEventListener('submit', event => {
   event.preventDefault();
   if(!form.reportValidity()) return;
-  if(!ordersOpen()) {toast('주문 접수가 마감되었어요.');refresh();return;}
+  if(!ordersOpen()) {toast(closedMessage());refresh();return;}
   if(!signedIn()) {me.user ? nicknameForm(true) : loginPrompt('order');return;}
   submitOrder();
 });
@@ -298,12 +315,12 @@ async function orderDetail(id) {
   const order = findOrder(id);
   if(!order) {toast('주문을 찾을 수 없어요.');myOrders();return;}
   const closed = ['cancelled','refunded'].includes(order.status);
-  const editable = ordersOpen() && order.status === 'payment_pending';
-  const needsDate = !order.pickupDate && EVENTS[order.event]?.available !== false && ordersOpen() && ['payment_pending','verification_requested'].includes(order.status);
+  const editable = orderOpen(order) && order.status === 'payment_pending';
+  const needsDate = !order.pickupDate && orderOpen(order) && ['payment_pending','verification_requested'].includes(order.status);
   const cancellable = !['cancelled','cancel_requested','refunded','picked_up'].includes(order.status);
   const note = {payment_pending:'입금 후 \'입금 확인 요청\'을 눌러주세요. 요청만으로 주문이 확정되지는 않아요.',verification_requested:'운영자가 입금 내역을 확인하고 있어요. 확인되면 \'입금 확인 완료\'로 바뀌어요.',paid:'입금이 확인됐어요. 현장 배부 일정과 장소는 오픈카톡방에서 공지해요.',cancel_requested:'운영자가 취소와 환불 여부를 확인하고 있어요.',cancelled:'취소된 주문이에요.',refunded:'환불이 완료된 주문이에요.',picked_up:'수령이 완료된 주문이에요.'}[order.status] ?? '';
   const id_ = escapeHTML(order.id);
-  openModal(`<div class="modal-label">내 주문</div><h2 id="modal-title">주문 내역</h2>${orderProgress(order)}${responseRows(order)}<p>${note}</p>${isPaid(order) ? openChatLink() : ''}<div class="modal-actions">${needsDate ? `<button class="button primary" data-action="pickup-date" data-id="${id_}">수령일 추가</button>` : ''}${editable ? `<button class="button primary" data-action="edit" data-id="${id_}">주문서 수정</button>` : ''}${!closed ? `<button class="button secondary" data-action="order" data-id="${id_}">입금 안내</button>` : ''}<button class="button secondary" data-action="my">주문 목록</button></div>${cancellable ? `<button class="danger-action" data-action="cancel-confirm" data-id="${id_}">${order.status === 'payment_pending' && ordersOpen() ? '주문 취소' : '취소·환불 요청'}</button>` : ''}`);
+  openModal(`<div class="modal-label">내 주문</div><h2 id="modal-title">주문 내역</h2>${orderProgress(order)}${responseRows(order)}<p>${note}</p>${isPaid(order) ? openChatLink() : ''}<div class="modal-actions">${needsDate ? `<button class="button primary" data-action="pickup-date" data-id="${id_}">수령일 추가</button>` : ''}${editable ? `<button class="button primary" data-action="edit" data-id="${id_}">주문서 수정</button>` : ''}${!closed ? `<button class="button secondary" data-action="order" data-id="${id_}">입금 안내</button>` : ''}<button class="button secondary" data-action="my">주문 목록</button></div>${cancellable ? `<button class="danger-action" data-action="cancel-confirm" data-id="${id_}">${order.status === 'payment_pending' && orderOpen(order) ? '주문 취소' : '취소·환불 요청'}</button>` : ''}`);
 }
 /** 입금 안내 버튼 문구. 요청 뒤에는 누를 수 없고 진행 상태를 보여준다. */
 const PAYMENT_BUTTON = {payment_pending:'입금했어요 · 입금 확인 요청',verification_requested:'입금 확인 중…',paid:'입금 확인 완료',cancel_requested:'취소 확인 중…',picked_up:'수령 완료'};
@@ -313,14 +330,14 @@ function paymentGuide(id) {
   const pending = record.status === 'payment_pending';
   const id_ = escapeHTML(record.id);
   const guide = {
-    payment_pending: paymentWindowOpen() ? `입금자명 <strong>${escapeHTML(record.payerName)}</strong>(으)로 ${won(record.totalAmount)}을 보내주세요. 입금한 뒤 아래 버튼을 눌러주세요. 운영자가 입금 내역을 대조한 뒤 주문이 확정돼요.` : '입금 기한이 지났어요. 입금 여부는 운영자가 실제 입금 내역으로 확인해요.',
+    payment_pending: paymentWindowOpen(new Date(), record.round) ? `입금자명 <strong>${escapeHTML(record.payerName)}</strong>(으)로 ${won(record.totalAmount)}을 보내주세요. 입금한 뒤 아래 버튼을 눌러주세요. 운영자가 입금 내역을 대조한 뒤 주문이 확정돼요.` : '입금 기한이 지났어요. 입금 여부는 운영자가 실제 입금 내역으로 확인해요.',
     verification_requested: `입금 확인을 요청했어요. 운영자가 입금자명 <strong>${escapeHTML(record.payerName)}</strong>, ${won(record.totalAmount)} 입금 내역을 대조하고 있어요. 확인되면 '입금 확인 완료'로 바뀌어요.`,
     paid: '입금이 확인됐어요. 현장 배부 일정과 장소는 오픈카톡방에서 공지해요.',
     cancel_requested: '운영자가 취소와 환불 여부를 확인하고 있어요.',
     picked_up: '수령이 완료된 주문이에요.',
   }[record.status] ?? '';
   const title = {payment_pending:'입금해주세요',verification_requested:'입금 확인 중이에요',paid:'입금이 확인됐어요',cancel_requested:'취소 확인 중이에요',picked_up:'수령이 완료됐어요'}[record.status] ?? '입금 계좌';
-  openModal(`<div class="modal-label">입금 계좌</div><h2 id="modal-title">${title}</h2>${orderProgress(record)}${responseRows(record)}<div class="payment-details"><p class="payment-bank-name"><strong>${escapeHTML(GROUP_BUY.bankAccount.bank)}</strong><span>예금주 ${escapeHTML(GROUP_BUY.bankAccount.holder)}</span></p><p class="payment-account-number">${escapeHTML(GROUP_BUY.bankAccount.number)}</p><div class="payment-copy-buttons"><button class="text-button" data-action="copy-account" data-id="${id_}">계좌번호 복사</button><button class="text-button" data-action="copy-amount" data-id="${id_}">입금 금액 복사</button></div><p class="payment-deadline">입금 기한: ${GROUP_BUY.paymentDeadlineLabel}<br>주문 마감: ${GROUP_BUY.ordersCloseLabel}</p></div><p>${guide}</p>${isPaid(record) ? openChatLink() : ''}<button class="button primary" data-action="payment-request" data-id="${id_}" ${pending ? '' : 'disabled'}>${PAYMENT_BUTTON[record.status] ?? ORDER_STATUS[record.status]}</button><button class="button secondary" data-action="order-detail" data-id="${id_}">주문 내역</button>`);
+  openModal(`<div class="modal-label">입금 계좌</div><h2 id="modal-title">${title}</h2>${orderProgress(record)}${responseRows(record)}<div class="payment-details"><p class="payment-bank-name"><strong>${escapeHTML(GROUP_BUY.bankAccount.bank)}</strong><span>예금주 ${escapeHTML(GROUP_BUY.bankAccount.holder)}</span></p><p class="payment-account-number">${escapeHTML(GROUP_BUY.bankAccount.number)}</p><div class="payment-copy-buttons"><button class="text-button" data-action="copy-account" data-id="${id_}">계좌번호 복사</button><button class="text-button" data-action="copy-amount" data-id="${id_}">입금 금액 복사</button></div><p class="payment-deadline">입금 기한: ${roundOf(record).paymentDeadlineLabel}<br>주문 마감: ${roundOf(record).ordersCloseLabel}</p></div><p>${guide}</p>${isPaid(record) ? openChatLink() : ''}<button class="button primary" data-action="payment-request" data-id="${id_}" ${pending ? '' : 'disabled'}>${PAYMENT_BUTTON[record.status] ?? ORDER_STATUS[record.status]}</button><button class="button secondary" data-action="order-detail" data-id="${id_}">주문 내역</button>`);
 }
 function addPickupDate(id) {
   const record = findOrder(id);
@@ -432,7 +449,7 @@ document.addEventListener('click', event => {
     case 'order-detail': orderDetail(id);break;
     case 'new-order':
       if(!signedIn()) {me.user ? nicknameForm(true) : loginPrompt('order');break;}
-      if(!ordersOpen()) {toast('주문 접수가 마감되었어요.');break;}
+      if(!ordersOpen()) {toast(closedMessage());break;}
       showPanel('new');break;
     case 'show-list': showPanel('list');break;
     case 'message': messages();break;
@@ -448,11 +465,11 @@ document.addEventListener('click', event => {
       });break;
     case 'edit':
       if(!signedIn()) loginPrompt('my');
-      else if(!ordersOpen() || findOrder(id)?.status !== 'payment_pending') toast('현재 상태에서는 주문서를 수정할 수 없어요.');
+      else if(!findOrder(id) || !orderOpen(findOrder(id)) || findOrder(id).status !== 'payment_pending') toast('현재 상태에서는 주문서를 수정할 수 없어요.');
       else {showPanel('edit', {orderId:id});toast('주문서를 바꾸고 \'수정 내용 저장\'을 눌러주세요.');}break;
     case 'cancel-confirm': {
       if(!signedIn()) {loginPrompt('my');break;}
-      const instant = findOrder(id)?.status === 'payment_pending' && ordersOpen();
+      const instant = findOrder(id)?.status === 'payment_pending' && orderOpen(findOrder(id));
       // 입금했을 수 있는 주문은 환불 계좌가 필요해 문의로 접수받는다. 상태는 운영자가 바꾼다.
       if(instant) openModal(`<div class="modal-label">내 주문</div><h2 id="modal-title">주문 취소</h2><p>주문번호 <strong>${escapeHTML(id)}</strong>을 취소해요. 입금 전 주문이라 바로 취소돼요. 주문 기록은 삭제하지 않아요.</p><div class="modal-actions"><button class="button secondary" data-action="order-detail" data-id="${escapeHTML(id)}">돌아가기</button><button class="button primary" data-action="cancel" data-id="${escapeHTML(id)}">주문 취소</button></div>`);
       else openModal(`<div class="modal-label">내 주문</div><h2 id="modal-title">취소·환불 요청</h2><p>입금한 주문의 취소·환불은 <strong>문의</strong>로 접수해주세요. 주문번호 <strong>${escapeHTML(id)}</strong>와 환불 받을 계좌(은행·계좌번호·예금주)를 남겨주시면 운영자가 입금 내역을 확인한 뒤 처리하고 문의 대화로 알려드려요.</p><div class="modal-actions"><button class="button secondary" data-action="order-detail" data-id="${escapeHTML(id)}">돌아가기</button><button class="button primary" data-action="refund-inquiry" data-id="${escapeHTML(id)}">문의로 취소·환불 요청</button></div>`);
@@ -467,6 +484,19 @@ document.addEventListener('click', event => {
         try {const {order} = await api('POST',`/api/orders/${encodeURIComponent(id)}/cancel`);replaceOrder(order);if(editingId === id) showPanel('list',{focus:false});refresh();await orderDetail(id);toast(order.status === 'cancelled' ? '주문을 취소했어요.' : '취소를 요청했어요. 운영자가 확인 후 처리해요.');}
         catch(error) {toast(error.message);await loadMe();}
       });break;
+    case 'play-video': {
+      // 누른 뒤에만 유튜브를 불러온다(자동재생 없음). 사이트 음악은 멈춘다.
+      const toggle = $('#music-toggle');
+      if(toggle?.getAttribute('aria-pressed') === 'true') toggle.click();
+      const frame = document.createElement('iframe');
+      frame.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(button.dataset.video)}?autoplay=1&rel=0&playsinline=1&enablejsapi=1`;
+      frame.title = button.getAttribute('aria-label').replace('영상 재생: ', '');
+      frame.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+      frame.referrerPolicy = 'strict-origin-when-cross-origin'; // 유튜브 플레이어는 출처(Referer)가 있어야 재생된다
+      frame.allowFullscreen = true;
+      button.replaceWith(frame);
+      break;
+    }
     case 'play-music': {
       // 하단 음악 플레이어를 켠다. 이미 재생 중이면 그대로 둔다.
       const toggle = $('#music-toggle');
@@ -485,6 +515,12 @@ document.addEventListener('click', event => {
 
 let countdownClosed = null;
 function updateCountdown(now = new Date()) {
+  // 오픈 전에는 마감 카운트다운 대신 준비 중 안내만 보여준다.
+  const soon = ordersNotYetOpen();
+  $('#countdown-clock').hidden = soon;
+  $('#countdown-soon').hidden = !soon;
+  $('#order-countdown').querySelector('.countdown-heading span').textContent = soon ? '2차 주문 오픈 준비 중' : '주문 마감까지';
+  $('#order-countdown').querySelector('.countdown-heading time').hidden = soon;
   const time = getOrderCountdown(now);
   for(const unit of ['days','hours','minutes','seconds']) $(`#countdown-${unit}`).textContent=String(time[unit]).padStart(2,'0');
   $('#countdown-clock').setAttribute('aria-label',time.isClosed ? '주문 접수 마감' : `주문 마감까지 ${time.days}일 ${time.hours}시간 ${time.minutes}분 ${time.seconds}초 남음`);
@@ -494,8 +530,12 @@ function updateCountdown(now = new Date()) {
 }
 updateCountdown();
 setInterval(() => updateCountdown(),1000);
-// 음악이 재생 중이면 메인 이미지의 안내 음표가 같이 움직인다.
-new MutationObserver(() => $('.dance-prompt')?.classList.toggle('is-playing', $('#music-toggle').getAttribute('aria-pressed') === 'true')).observe($('#music-toggle'), {attributes:true, attributeFilter:['aria-pressed']});
+// 음악이 재생 중이면 메인 이미지의 안내 음표가 같이 움직인다. 음악을 켜면 재생 중인 소개 영상은 멈춘다.
+new MutationObserver(() => {
+  const playing = $('#music-toggle').getAttribute('aria-pressed') === 'true';
+  $('.dance-prompt')?.classList.toggle('is-playing', playing);
+  if(playing) $('.story-video iframe')?.contentWindow?.postMessage(JSON.stringify({event:'command', func:'pauseVideo', args:[]}), 'https://www.youtube-nocookie.com');
+}).observe($('#music-toggle'), {attributes:true, attributeFilter:['aria-pressed']});
 refresh();
 loadMe().then(() => {
   booted = true;

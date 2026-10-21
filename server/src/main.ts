@@ -38,7 +38,9 @@ export async function createApp() {
       contentSecurityPolicy: {
         directives: {
           defaultSrc: ["'self'"],
-          imgSrc: ["'self'", 'data:'],
+          // 유튜브 영상(메인 '이 슬로건을 만든 이유'): 썸네일과, 누른 뒤에만 불러오는 nocookie 플레이어
+          imgSrc: ["'self'", 'data:', 'https://i.ytimg.com'],
+          frameSrc: ['https://www.youtube-nocookie.com'],
           styleSrc: ["'self'", "'unsafe-inline'"],
           scriptSrc: ["'self'"],
           connectSrc: ["'self'"],
