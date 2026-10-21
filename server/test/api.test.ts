@@ -82,7 +82,7 @@ class Client {
   }
 }
 
-const ORDER = { quantity: 3, event: 'sejong', pickupDate: '2026-10-31', payerName: '홍길동', pickupTermsAgreed: true };
+const ORDER = { quantity: 3, event: 'sejong', pickupDate: '2026-10-31', payerName: '홍길동', pickupTermsAgreed: true, petitionPledged: true };
 const key = () => crypto.randomUUID();
 
 test('비로그인: 계정 없음, 주문·문의 401, 헤더 없는 쓰기 요청 403', async () => {
@@ -136,6 +136,8 @@ test('여러 건 주문: 제출·중복 제출 방지·수정·입금 확인 요
     { ...ORDER, payerName: '<b>' },
     { ...ORDER, pickupTermsAgreed: undefined }, // 2차는 수령 안내 동의 필수
     { ...ORDER, pickupTermsAgreed: 'true' },
+    { ...ORDER, petitionPledged: undefined }, // 2차는 다음 청원 참여 동의 필수
+    { ...ORDER, petitionPledged: false },
   ]) {
     assert.equal((await c.json('POST', '/api/orders', bad)).status, 400, JSON.stringify(bad));
   }
@@ -404,7 +406,7 @@ test('현장 수령: 입금 확인 주문만 전달, 여러 건 한 번에·전�
 
   const logged = (await admin.json('GET', '/api/admin/orders')).body.orders.find((o: any) => o.id === a.id);
   assert.deepEqual(logged.logs.map((l: any) => `${l.actor}:${l.toStatus}:${l.note ?? ''}`), [
-    'user:payment_pending:주문서 제출 · 수령 안내 동의', 'admin:paid:', 'admin:picked_up:현장 수령', 'admin:paid:현장 수령 되돌리기',
+    'user:payment_pending:주문서 제출 · 수령 안내 동의 · 다음 청원 참여 동의', 'admin:paid:', 'admin:picked_up:현장 수령', 'admin:paid:현장 수령 되돌리기',
   ]);
 });
 

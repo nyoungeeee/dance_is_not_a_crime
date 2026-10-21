@@ -420,3 +420,9 @@ dialog::backdrop{background:#000b}
 @media(max-width:700px){.modal-shell .notice-thanks{font-size:10px}.modal-shell .notice-mine{font-size:11px}}
 .pickup-info .pickup-notice-link{display:inline-block;margin-top:14px;cursor:pointer}
 .pickup-terms{margin:4px 0 14px}.pickup-terms b{display:block;font-size:11px;font-weight:700;color:var(--lime);margin-bottom:2px}.pickup-terms-consent{border-top:0;padding-top:0;margin-bottom:22px}
+.story-section{border-top:1px solid var(--line);display:grid;grid-template-columns:1fr 1.45fr;gap:70px;padding:44px 0 40px}
+.story-section h2{font-size:23px;margin:0}
+.story-body p{margin:0 0 12px;font-size:13px;line-height:1.85;color:var(--muted);max-width:560px}
+.story-body .story-ask{margin:18px 0 0;padding-left:12px;border-left:2px solid var(--lime);color:var(--ink);font-weight:600}
+.petition-consent strong{display:block;color:var(--ink);font-weight:700}
+@media(max-width:700px){.story-section{display:block;padding:34px 0 30px}.story-section h2{font-size:22px;margin-bottom:18px}.story-body p{font-size:12px}}

@@ -124,6 +124,7 @@ function setDraft(record) {
   $('#payer-name').value = record.payerName || '';
   $('#consent').checked = false;
   $('#pickup-terms').checked = false;
+  $('#petition-pledge').checked = false;
   refreshQuantity();
 }
 function clearDraft() {
@@ -274,6 +275,7 @@ async function submitOrder() {
   try {record = validateOrder(draftRecord());} catch(error) {toast(error.message);return;}
   // 수령 안내 동의(2차). 서버도 확인하고 주문 기록에 남긴다.
   record.pickupTermsAgreed = $('#pickup-terms').checked;
+  record.petitionPledged = $('#petition-pledge').checked;
   const editing = panelMode === 'edit' ? editingId : null;
   await busy($('#submit-order'), async () => {
     try {
