@@ -25,9 +25,10 @@ let app: NestExpressApplication;
 before(async () => {
   const root = path.resolve(__dirname, '..', '..');
   execFileSync(path.join(root, 'node_modules', '.bin', 'prisma'), ['migrate', 'deploy'], { cwd: root, env: process.env, stdio: 'ignore' });
-  // 주문 마감(GROUP_BUY.ordersCloseAt)이 지나도 CI가 돌도록 테스트 중에는 마감을 미룬다. 마감 동작은 '마감 후' 테스트가 이 마감 시각으로 확인한다.
-  const { GROUP_BUY } = await import('../src/common/group-buy');
-  (GROUP_BUY as { ordersCloseAt: Date }).ordersCloseAt = new Date('2099-01-01T00:00:00+09:00');
+  // 2차 주문 마감이 지나도 CI가 돌도록 테스트 중에는 2차 마감을 미룬다. 1차(경기)는 실제처럼 마감된 상태다.
+  // 마감 동작은 '마감 후' 테스트가 이 마감 시각으로 확인한다.
+  const { ROUNDS } = await import('../src/common/group-buy');
+  ROUNDS[1].ordersCloseAt = new Date('2099-01-01T00:00:00+09:00');
   const { createApp } = await import('../src/main');
   ({ app } = await createApp());
   app.useLogger(false);
@@ -81,7 +82,7 @@ class Client {
   }
 }
 
-const ORDER = { quantity: 3, event: 'inmufe', pickupDate: '2026-10-17', payerName: '홍길동' };
+const ORDER = { quantity: 3, event: 'sejong', pickupDate: '2026-10-31', payerName: '홍길동' };
 const key = () => crypto.randomUUID();
 
 test('비로그인: 계정 없음, 주문·문의 401, 헤더 없는 쓰기 요청 403', async () => {
@@ -126,8 +127,10 @@ test('여러 건 주문: 제출·중복 제출 방지·수정·입금 확인 요
     { ...ORDER, quantity: 21 },
     { ...ORDER, quantity: 2.5 },
     { ...ORDER, quantity: '3' },
-    { ...ORDER, event: 'sejong', pickupDate: '2026-10-30' },
-    { ...ORDER, pickupDate: '2026-10-30' },
+    { ...ORDER, event: 'inmufe', pickupDate: '2026-10-17' }, // 1차 행사는 마감
+    { ...ORDER, event: 'nope' },
+    { ...ORDER, pickupDate: '2026-10-30' }, // 금요일은 받지 않는다
+    { ...ORDER, pickupDate: '2026-10-17' },
     { ...ORDER, payerName: ' ' },
     { ...ORDER, payerName: 'x'.repeat(41) },
     { ...ORDER, payerName: '<b>' },
@@ -144,6 +147,7 @@ test('여러 건 주문: 제출·중복 제출 방지·수정·입금 확인 요
   assert.match(first.id, /^DNC-[0-9A-F]{8}$/);
   assert.equal(first.totalAmount, 15900);
   assert.equal(first.status, 'payment_pending');
+  assert.equal(first.round, 2);
 
   // 같은 주문서를 두 번 제출(연타·재전송)해도 주문은 하나
   r = await c.json('POST', '/api/orders', { ...ORDER, requestKey: k1 });
@@ -151,7 +155,7 @@ test('여러 건 주문: 제출·중복 제출 방지·수정·입금 확인 요
   assert.equal(r.body.order.id, first.id);
 
   // 추가 주문
-  r = await c.json('POST', '/api/orders', { ...ORDER, quantity: 1, pickupDate: '2026-10-18', requestKey: key() });
+  r = await c.json('POST', '/api/orders', { ...ORDER, quantity: 1, pickupDate: '2026-11-01', requestKey: key() });
   assert.equal(r.body.created, true);
   const second = r.body.order;
   assert.notEqual(second.id, first.id);
@@ -168,8 +172,8 @@ test('여러 건 주문: 제출·중복 제출 방지·수정·입금 확인 요
   assert.equal((await c.json('POST', `/api/orders/${first.id}/payment-request`)).status, 409);
   // 입금 확인 요청 후에는 수정 불가, 수령일 변경은 가능
   assert.equal((await c.json('PUT', `/api/orders/${first.id}`, ORDER)).status, 409);
-  r = await c.json('PATCH', `/api/orders/${first.id}/pickup-date`, { pickupDate: '2026-10-18' });
-  assert.equal(r.body.order.pickupDate, '2026-10-18');
+  r = await c.json('PATCH', `/api/orders/${first.id}/pickup-date`, { pickupDate: '2026-11-01' });
+  assert.equal(r.body.order.pickupDate, '2026-11-01');
 
   // 다른 사람은 내 주문을 볼 수도 바꿀 수도 없다
   const other = new Client();
@@ -215,11 +219,11 @@ test('마감 후에는 제출·수정·즉시 취소가 막힌다(서버 시각 
   await c.json('PATCH', '/api/me', { nickname: '마감테스트' });
   const created = (await c.json('POST', '/api/orders', ORDER)).body.order;
   const userId = (await c.json('GET', '/api/me')).body.user.id;
-  const { GROUP_BUY } = await import('../src/common/group-buy');
-  const late = new Date(GROUP_BUY.ordersCloseAt);
+  const { ROUNDS } = await import('../src/common/group-buy');
+  const late = new Date(ROUNDS[1].ordersCloseAt);
   await assert.rejects(orders.create(userId, '마감테스트', ORDER, late), /마감/);
   await assert.rejects(orders.update(userId, '마감테스트', created.id, ORDER, late), /마감/);
-  await assert.rejects(orders.setPickupDate(userId, created.id, '2026-10-18', late));
+  await assert.rejects(orders.setPickupDate(userId, created.id, '2026-11-01', late));
   const cancelled = await orders.cancel(userId, created.id, late);
   assert.equal(cancelled.status, 'cancel_requested');
 });
@@ -400,4 +404,47 @@ test('현장 수령: 입금 확인 주문만 전달, 여러 건 한 번에·전�
   assert.deepEqual(logged.logs.map((l: any) => `${l.actor}:${l.toStatus}:${l.note ?? ''}`), [
     'user:payment_pending:주문서 제출', 'admin:paid:', 'admin:picked_up:현장 수령', 'admin:paid:현장 수령 되돌리기',
   ]);
+});
+
+test('1차(경기) 주문: 마감된 차수라 수정·즉시 취소 불가, 운영자가 세종 수령일로 이월하면 그날 전달된다', async () => {
+  const { PrismaService } = await import('../src/prisma.service');
+  const prisma = app.get(PrismaService);
+  const user = new Client();
+  await user.login('4501');
+  await user.json('PATCH', '/api/me', { nickname: '경기미수령' });
+  const userId = (await user.json('GET', '/api/me')).body.user.id;
+  const old = (id: string, status: string) => prisma.order.create({
+    data: { id, userId, nickname: '경기미수령', quantity: 2, event: 'inmufe', pickupDate: '2026-10-18', payerName: '김경기', unitPrice: 5300, totalAmount: 10600, status, round: 1 },
+  });
+  const paid = await old('DNC-0000A001', 'paid');
+  const pending = await old('DNC-0000A002', 'payment_pending');
+  const done = await old('DNC-0000A003', 'picked_up');
+
+  // 2차가 열려 있어도 1차 주문은 1차 마감을 따른다.
+  assert.equal((await user.json('PUT', `/api/orders/${pending.id}`, ORDER)).status, 409);
+  assert.equal((await user.json('PATCH', `/api/orders/${pending.id}/pickup-date`, { pickupDate: '2026-10-17' })).status, 409);
+  assert.equal((await user.json('POST', `/api/orders/${pending.id}/cancel`)).body.order.status, 'cancel_requested');
+  // 새 주문은 2차로 들어간다.
+  const fresh = (await user.json('POST', '/api/orders', { ...ORDER, requestKey: key() })).body.order;
+  assert.equal(fresh.round, 2);
+
+  const admin = new Client();
+  await admin.login('9999');
+  const move = (c: Client, id: string, body: unknown) => c.json('POST', `/api/admin/orders/${id}/pickup`, body);
+  assert.equal((await move(user, paid.id, { event: 'sejong', pickupDate: '2026-10-31' })).status, 403);
+  assert.equal((await move(admin, 'DNC-NOPE', { event: 'sejong', pickupDate: '2026-10-31' })).status, 404);
+  assert.equal((await move(admin, paid.id, { event: 'sejong', pickupDate: '2026-10-18' })).status, 400);
+  assert.equal((await move(admin, paid.id, { event: 'nope', pickupDate: '2026-10-31' })).status, 400);
+  assert.equal((await move(admin, done.id, { event: 'sejong', pickupDate: '2026-10-31' })).status, 409);
+
+  const r = await move(admin, paid.id, { event: 'sejong', pickupDate: '2026-11-01', note: '문의로 일요일 수령 요청' });
+  assert.equal(r.status, 201);
+  assert.deepEqual([r.body.order.event, r.body.order.pickupDate, r.body.order.status, r.body.order.round, r.body.order.totalAmount], ['sejong', '2026-11-01', 'paid', 1, 10600]);
+  assert.equal((await move(admin, paid.id, { event: 'sejong', pickupDate: '2026-11-01' })).status, 409);
+  const logged = (await admin.json('GET', '/api/admin/orders')).body.orders.find((o: any) => o.id === paid.id);
+  assert.deepEqual(logged.logs.map((l: any) => l.note), ['수령 변경 경기인디뮤직페스티벌 2026-10-18 → 세종보헤미안뮤직페스티벌 2026-11-01 · 문의로 일요일 수령 요청']);
+  assert.equal((await user.json('GET', '/api/me')).body.orders.find((o: any) => o.id === paid.id).pickupDate, '2026-11-01');
+
+  // 이월한 주문도 입금 확인 완료라 그대로 전달할 수 있다.
+  assert.equal((await admin.json('POST', '/api/admin/pickup', { orderIds: [paid.id] })).status, 201);
 });

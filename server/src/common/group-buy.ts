@@ -2,17 +2,41 @@ import { fail } from './errors';
 
 /** dist/group-buy.mjs, dist/account-state.mjs와 같은 값. 서버가 기준이다. */
 export const GROUP_BUY = {
-  ordersCloseAt: new Date('2026-10-13T22:00:00+09:00'),
-  paymentDeadline: new Date('2026-10-13T23:59:59.999+09:00'),
   unitPrice: 5300,
   minQuantity: 1,
   maxQuantity: 20,
 } as const;
 
-export const EVENTS: Record<string, { available: boolean; name: string; dates: string[] }> = {
-  inmufe: { available: true, name: '경기인디뮤직페스티벌', dates: ['2026-10-17', '2026-10-18'] },
-  sejong: { available: false, name: '세종보헤미안뮤직페스티벌', dates: ['2026-10-30', '2026-10-31', '2026-11-01'] },
+export const EVENTS: Record<string, { name: string; dates: string[] }> = {
+  inmufe: { name: '경기인디뮤직페스티벌', dates: ['2026-10-17', '2026-10-18'] },
+  sejong: { name: '세종보헤미안뮤직페스티벌', dates: ['2026-10-31', '2026-11-01'] },
 };
+
+/**
+ * 공동구매 차수. 마감이 빠른 순서. 새 주문은 아직 마감 전인 첫 차수로 들어가고, 그 차수의 행사만 고를 수 있다.
+ * 주문의 수정·즉시 취소·수령일 변경은 그 주문이 속한 차수의 마감을 따른다.
+ */
+export interface Round {
+  id: number;
+  ordersCloseAt: Date;
+  paymentDeadline: Date;
+  events: readonly string[];
+}
+export const ROUNDS: Round[] = [
+  { id: 1, ordersCloseAt: new Date('2026-10-13T22:00:00+09:00'), paymentDeadline: new Date('2026-10-13T23:59:59.999+09:00'), events: ['inmufe'] },
+  { id: 2, ordersCloseAt: new Date('2026-10-25T22:00:00+09:00'), paymentDeadline: new Date('2026-10-25T23:59:59.999+09:00'), events: ['sejong'] },
+];
+
+/** 지금 주문을 받는(또는 마지막으로 받은) 차수. */
+export function currentRound(now = new Date()): Round {
+  return ROUNDS.find((r) => now.getTime() < r.ordersCloseAt.getTime()) ?? ROUNDS[ROUNDS.length - 1];
+}
+
+/** 그 차수의 주문 접수가 아직 열려 있는지. */
+export function roundOpen(roundId: number, now = new Date()): boolean {
+  const round = ROUNDS.find((r) => r.id === roundId);
+  return !!round && now.getTime() < round.ordersCloseAt.getTime();
+}
 
 export const ORDER_STATUSES = [
   'payment_pending',
@@ -30,8 +54,9 @@ export const CLOSED_STATUSES: readonly string[] = ['cancelled', 'refunded', 'pic
 /** 사람당 동시에 진행할 수 있는 주문 수(장난·실수 방지). 끝난 주문은 세지 않는다. */
 export const MAX_OPEN_ORDERS = 10;
 
+/** 새 주문을 받는 중인지. */
 export function ordersOpen(now = new Date()): boolean {
-  return now.getTime() < GROUP_BUY.ordersCloseAt.getTime();
+  return roundOpen(currentRound(now).id, now);
 }
 
 export interface OrderInput {
@@ -46,7 +71,8 @@ export function validatePickupDate(event: string, date: unknown): string {
   return date;
 }
 
-export function validateOrderInput(body: unknown): OrderInput {
+/** 주문서 검사. 행사는 그 차수에서 받는 행사만. */
+export function validateOrderInput(body: unknown, round: Round): OrderInput {
   const v = (body ?? {}) as Record<string, unknown>;
   const quantity = v.quantity;
   if (typeof quantity !== 'number' || !Number.isInteger(quantity) || quantity < GROUP_BUY.minQuantity || quantity > GROUP_BUY.maxQuantity) {
@@ -54,7 +80,9 @@ export function validateOrderInput(body: unknown): OrderInput {
   }
   const event = typeof v.event === 'string' ? v.event : '';
   if (!Object.hasOwn(EVENTS, event)) fail(400, 'INVALID_EVENT', '수령할 행사를 선택해주세요.');
-  if (!EVENTS[event].available) fail(400, 'EVENT_UNAVAILABLE', '세종보헤미안뮤직페스티벌 수령은 추후 오픈 예정이에요.');
+  if (!round.events.includes(event)) {
+    fail(400, 'EVENT_UNAVAILABLE', `이번 공동구매는 ${round.events.map((e) => EVENTS[e].name).join(', ')} 수령만 받아요.`);
+  }
   const pickupDate = validatePickupDate(event, v.pickupDate);
   const payerName = typeof v.payerName === 'string' ? v.payerName.trim() : '';
   if (!payerName || [...payerName].length > 40 || /[<>\u0000-\u001f]/u.test(payerName)) {

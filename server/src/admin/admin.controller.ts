@@ -27,6 +27,12 @@ export class AdminController {
     return { order: await this.orders.adminSetStatus(admin.id, id, body?.status, body?.note) };
   }
 
+  /** 수령 행사·날짜 변경(1차 미수령분 세종 이월 등). */
+  @Post('orders/:id/pickup')
+  async setPickup(@CurrentUser() admin: SessionUser, @Param('id') id: string, @Body() body: { event?: unknown; pickupDate?: unknown; note?: unknown }) {
+    return { order: await this.orders.adminSetPickup(admin.id, id, body?.event, body?.pickupDate, body?.note) };
+  }
+
   /** 현장 수령 전달 완료. 입금 확인 완료(paid) 주문만, 전부 아니면 409로 아무것도 안 바꾼다. */
   @Post('pickup')
   async pickup(@CurrentUser() admin: SessionUser, @Body() body: { orderIds?: unknown }) {
