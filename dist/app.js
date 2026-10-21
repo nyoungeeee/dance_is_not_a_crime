@@ -123,6 +123,7 @@ function setDraft(record) {
   renderPickupDays(selectedEvent, selectedEvent === record.event ? record.pickupDate : null);
   $('#payer-name').value = record.payerName || '';
   $('#consent').checked = false;
+  $('#pickup-terms').checked = false;
   refreshQuantity();
 }
 function clearDraft() {
@@ -255,7 +256,7 @@ function pickupNotice({force = false} = {}) {
     : mine.length
     ? `<p class="notice-mine"><strong>${escapeHTML(nickname())} 님 주문 ${mine.length}건(${count}개)이 아직 수령 전이에요.</strong>문의창으로 보낸 안내를 확인하고 답변해주세요.</p><button class="button accent notice-openchat" data-action="message">문의창에서 답변하기</button>`
     : `<a class="button kakao notice-openchat" href="${GROUP_BUY.openChatUrl}" target="_blank" rel="noopener">${chat}오픈카톡방 공지 보기</a>`;
-  openModal(`<div class="modal-label notice-label"><span class="live-dot" aria-hidden="true"></span>미수령 슬로건 안내</div><h2 id="modal-title">아직 못 받으셨다면<br>세종에서 받아 가세요</h2><p class="notice-lead">경기인디뮤직페스티벌에서 수령하지 않으신 슬로건은 <strong>아래 두 가지 중 하나</strong>로 처리해요. 미수령자분들께는 사이트 문의로 개별 안내를 보내드렸어요.</p><ol class="notice-steps"><li><span>1. 현장 수령</span><strong>세종보헤미안<br>10/31(토) · 11/1(일)</strong><em>지인 대리 수령 가능(주문 닉네임)</em></li><li><span>2. 기부</span><strong>환불 없이<br>기부 처리</strong><em>세종 관객·아티스트 또는 오방가르드 행사</em></li></ol><p class="notice-caution"><b>세종 수령을 원하시면 토요일·일요일 중 오실 날짜를 문의창에 꼭 적어주세요.</b> 세종에서도 수령하지 않으시면 자동으로 기부 처리돼요. 현장 수령이 원칙이라 택배 발송과 환불은 어려워요.</p><p class="notice-thanks">운영자와 도와준 지인들 모두 이익 없이 티켓값을 내고 공연 보는 시간을 쪼개 배부했어요. 미수령 건이 많아 오래 고민한 끝에 정한 방식이니 너그럽게 이해 부탁드려요.</p>${action}<div class="notice-footer"><button class="text-button" data-action="notice-hide-today">오늘 하루 보지 않기</button><button class="text-button" data-action="close">닫기</button></div>`);
+  openModal(`<div class="modal-label notice-label"><span class="live-dot" aria-hidden="true"></span>미수령 슬로건 안내</div><h2 id="modal-title">아직 못 받으셨다면<br>세종에서 받아 가세요</h2><p class="notice-lead">경기인디뮤직페스티벌에서 수령하지 않으신 슬로건은 <strong>아래 두 가지 중 하나</strong>로 처리해요. 미수령자분들께는 사이트 문의로 개별 안내를 보내드렸어요.</p><ol class="notice-steps"><li><span>1. 현장 수령</span><strong>세종보헤미안<br>10/31(토) · 11/1(일)</strong><em>12:00–14:00 · 공연 사이 20분(토 19:45–20:05, 일 19:35–19:55)<br>지인 대리 수령 가능(주문 닉네임)</em></li><li><span>2. 기부</span><strong>환불 없이<br>기부 처리</strong><em>세종 관객·아티스트 또는 오방가르드 행사</em></li></ol><p class="notice-caution"><b>세종 수령을 원하시면 토요일·일요일 중 오실 날짜를 문의창에 꼭 적어주세요.</b> 세종에서도 수령하지 않으시면 자동으로 기부 처리돼요. 현장 수령이 원칙이라 택배 발송과 환불은 어려워요.</p><p class="notice-thanks">운영자와 도와준 지인들 모두 이익 없이 티켓값을 내고 공연 보는 시간을 쪼개 배부했어요. 미수령 건이 많아 오래 고민한 끝에 정한 방식이니 너그럽게 이해 부탁드려요.</p>${action}<div class="notice-footer"><button class="text-button" data-action="notice-hide-today">오늘 하루 보지 않기</button><button class="text-button" data-action="close">닫기</button></div>`);
 }
 function draftRecord() {const data = new FormData(form);return {quantity:parseQuantity($('#quantity').value), event:data.get('event'), payerName:data.get('payerName'), pickupDate:data.get('pickupDate')};}
 /** 주문 진행 단계. 끝난 단계는 done, 지금 기다리는 단계는 current. 취소 계열은 단계 대신 상태만 보여준다. */
@@ -271,6 +272,8 @@ function responseRows(record) {
 async function submitOrder() {
   let record;
   try {record = validateOrder(draftRecord());} catch(error) {toast(error.message);return;}
+  // 수령 안내 동의(2차). 서버도 확인하고 주문 기록에 남긴다.
+  record.pickupTermsAgreed = $('#pickup-terms').checked;
   const editing = panelMode === 'edit' ? editingId : null;
   await busy($('#submit-order'), async () => {
     try {
