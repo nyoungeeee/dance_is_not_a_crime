@@ -6,7 +6,8 @@ const $ = s => document.querySelector(s);
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const won = n => `${Number(n).toLocaleString('ko-KR')}원`;
 const time = iso => new Date(iso).toLocaleString('ko-KR',{timeZone:'Asia/Seoul',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
-let orders = [], threads = [], currentThread = null, toastTimer;
+// allOrders: 서버에서 받은 전체. orders: 상단에서 고른 행사(수령 행사 기준)의 주문만. 주문·현장 수령 탭은 orders만 본다.
+let allOrders = [], orders = [], threads = [], currentThread = null, toastTimer;
 /** 요청 중 버튼에 스피너를 띄우고 막는다. */
 async function busy(btn, task) {
   if (btn.disabled) return;
@@ -19,37 +20,50 @@ async function busy(btn, task) {
 function toast(m) {$('#toast').textContent = m;$('#toast').classList.add('visible');clearTimeout(toastTimer);toastTimer = setTimeout(() => $('#toast').classList.remove('visible'), 3500);}
 
 for (const [value, label] of Object.entries(ORDER_STATUS)) $('#status-filter').insertAdjacentHTML('beforeend', `<option value="${value}">${label}</option>`);
-$('#round-filter').value = String(CURRENT_ROUND);
 const CLOSED = ['cancelled','refunded','picked_up','forfeited'];
 const ROUND_LABEL = {1:'1차 경기', 2:'2차 세종'};
-const roundFiltered = () => {const r = $('#round-filter').value;return r ? orders.filter(o => String(o.round) === r) : orders;};
+/**
+ * 행사별 관리: 세종(2차 + 세종으로 옮긴 1차 이월분) / 인뮤페(경기 수령일로 남은 1차 주문). 문의·정산 탭은 행사와 상관없이 하나.
+ * 고른 행사는 이 브라우저에 기억한다.
+ */
+const SCOPES = {sejong:'세종', inmufe:'인뮤페'};
+let scope = 'sejong';
+try {const saved = localStorage.getItem('admin-scope');if (Object.hasOwn(SCOPES, saved)) scope = saved;} catch {}
+function applyScope() {
+  orders = allOrders.filter(o => o.event === scope);
+  document.querySelectorAll('[data-scope]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.scope === scope)));
+  document.body.dataset.scope = scope;
+  document.title = `운영자 화면 · ${SCOPES[scope]} | 춤은 불법이 아니다`;
+}
 /** 1차(경기) 주문을 세종 수령일로 옮긴 것. 현장 수령·명단에서 구분해 보여준다. */
 const carried = o => o.round === 1 && o.event !== 'inmufe';
 // 수령 변경에 고를 수 있는 모든 행사·날짜("행사|날짜")
 const PICKUP_CHOICES = Object.entries(EVENTS).flatMap(([event, e]) => e.dates.map(d => [`${event}|${d.value}`, `${e.name} ${d.label}`]));
 
 function renderSummary() {
-  // 건수·진행 조건(50개)은 고른 차수 기준, 수령일별 수량은 차수와 상관없이(이월분 포함) 그날 나눠 줄 전체.
-  const list = roundFiltered();
+  // 고른 행사 기준. 진행 조건(50개)은 지금 받는 차수(세종 2차) 주문만 센다(1차 이월분 제외).
+  const list = orders;
   const count = s => list.filter(o => o.status === s).length;
   // 입금 확인 완료 합계에는 수령 포기(입금은 받음)도 넣는다. 수령일별 수량은 실제로 나눠 줄 것만.
   const paid = list.filter(o => ['paid','picked_up','forfeited'].includes(o.status));
   const live = list.filter(o => !['cancelled','refunded'].includes(o.status));
   const byDate = {};
-  for (const o of orders.filter(o => ['paid','picked_up'].includes(o.status))) {const k = `${EVENTS[o.event]?.name ?? o.event} ${pickupDateLabel(o.event, o.pickupDate)}`;byDate[k] = (byDate[k] || 0) + o.quantity;}
+  for (const o of list.filter(o => ['paid','picked_up'].includes(o.status))) {const k = `${EVENTS[o.event]?.name ?? o.event} ${pickupDateLabel(o.event, o.pickupDate)}`;byDate[k] = (byDate[k] || 0) + o.quantity;}
   $('#summary').innerHTML = [
     ['입금 확인 요청', `${count('verification_requested')}건`],
     ['입금 대기', `${count('payment_pending')}건`],
     ['취소 확인 요청', `${count('cancel_requested')}건`],
-    ['진행 중 주문 수량 (최소 50개)', `${live.reduce((a, o) => a + o.quantity, 0)}개 / ${GROUP_BUY.minTotalQuantity}개`],
-    ['다음 청원 참여 동의', `${new Set(live.filter(o => o.logs.some(l => l.note?.includes('다음 청원 참여 동의'))).map(o => o.userId)).size}명`],
+    scope === 'sejong'
+      ? ['2차 진행 중 주문 수량 (최소 50개)', `${live.filter(o => o.round === CURRENT_ROUND).reduce((a, o) => a + o.quantity, 0)}개 / ${GROUP_BUY.minTotalQuantity}개`]
+      : ['진행 중 주문 수량', `${live.reduce((a, o) => a + o.quantity, 0)}개`],
+    scope === 'sejong' && ['다음 청원 참여 동의', `${new Set(live.filter(o => o.logs.some(l => l.note?.includes('다음 청원 참여 동의'))).map(o => o.userId)).size}명`],
     ['입금 확인 완료', `${paid.length}건 · ${paid.reduce((a, o) => a + o.quantity, 0)}개 · ${won(paid.reduce((a, o) => a + o.totalAmount, 0))}`],
     ...Object.entries(byDate).map(([k, q]) => [`수령 ${k}`, `${q}개`]),
-  ].map(([k, v]) => `<div><span>${esc(k)}</span><strong>${esc(v)}</strong></div>`).join('');
+  ].filter(Boolean).map(([k, v]) => `<div><span>${esc(k)}</span><strong>${esc(v)}</strong></div>`).join('');
 }
 function renderOrders() {
   const status = $('#status-filter').value, q = $('#search').value.trim().toLowerCase();
-  const rows = roundFiltered().filter(o => (!status || o.status === status) && (!q || [o.id, o.nickname, o.payerName].some(v => v.toLowerCase().includes(q))));
+  const rows = orders.filter(o => (!status || o.status === status) && (!q || [o.id, o.nickname, o.payerName].some(v => v.toLowerCase().includes(q))));
   $('#order-rows').innerHTML = rows.map(o => `<tr data-id="${esc(o.id)}">
     <td>${esc(o.id)} <small class="muted">${o.round}차</small><details><summary>기록 ${o.logs.length}</summary><ol>${o.logs.map(l => `<li>${time(l.createdAt)} ${l.actor === 'admin' ? '운영자' : '사용자'}${l.fromStatus === l.toStatus ? '' : ` → ${esc(ORDER_STATUS[l.toStatus] ?? l.toStatus)}`}${l.note ? ` · ${esc(l.note)}` : ''}</li>`).join('')}</ol></details></td>
     <td>${esc(o.nickname)}</td><td><strong>${esc(o.payerName)}</strong></td><td class="num">${o.quantity}</td><td class="num">${won(o.totalAmount)}</td>
@@ -59,11 +73,19 @@ function renderOrders() {
   </tr>`).join('') || '<tr><td colspan="9" class="muted">주문이 없어요.</td></tr>';
 }
 async function loadOrders() {
-  orders = (await api('GET', '/api/admin/orders')).orders;
+  allOrders = (await api('GET', '/api/admin/orders')).orders;
+  applyScope();
   renderSummary();renderOrders();renderPickup();
 }
 $('#status-filter').addEventListener('change', renderOrders);
-$('#round-filter').addEventListener('change', () => {renderSummary();renderOrders();});
+document.querySelectorAll('[data-scope]').forEach(b => b.addEventListener('click', () => {
+  if (scope === b.dataset.scope) return;
+  scope = b.dataset.scope;
+  try {localStorage.setItem('admin-scope', scope);} catch {}
+  applyScope();fillPrintDates();
+  $('#pk-q').value = '';pickedUser = null;
+  renderSummary();renderOrders();renderPickup();
+}));
 $('#search').addEventListener('input', renderOrders);
 $('#reload').addEventListener('click', () => loadOrders().then(() => toast('새로고침했어요.')).catch(e => toast(e.message)));
 // 수령 변경: 1차 경기 미수령분을 문의로 받은 세종 날짜로 옮길 때 쓴다. 메모 칸에 적은 내용이 기록에 같이 남는다.
@@ -92,9 +114,9 @@ $('#order-rows').addEventListener('click', async e => {
 $('#csv').addEventListener('click', () => {
   const head = ['주문번호','차수','닉네임','입금자명','수량','금액','행사','수령일','상태','접수시각','수정시각'];
   const cell = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const lines = [head, ...roundFiltered().map(o => [o.id, ROUND_LABEL[o.round] ?? o.round, o.nickname, o.payerName, o.quantity, o.totalAmount, EVENTS[o.event]?.name ?? o.event, o.pickupDate ?? '', ORDER_STATUS[o.status] ?? o.status, time(o.createdAt), time(o.updatedAt)])].map(r => r.map(cell).join(','));
+  const lines = [head, ...orders.map(o => [o.id, ROUND_LABEL[o.round] ?? o.round, o.nickname, o.payerName, o.quantity, o.totalAmount, EVENTS[o.event]?.name ?? o.event, o.pickupDate ?? '', ORDER_STATUS[o.status] ?? o.status, time(o.createdAt), time(o.updatedAt)])].map(r => r.map(cell).join(','));
   const blob = new Blob(['﻿' + lines.join('\r\n')], {type:'text/csv;charset=utf-8'});
-  const a = Object.assign(document.createElement('a'), {href:URL.createObjectURL(blob), download:`orders${$('#round-filter').value ? `-${$('#round-filter').value}차` : ''}-${new Date().toISOString().slice(0,10)}.csv`});
+  const a = Object.assign(document.createElement('a'), {href:URL.createObjectURL(blob), download:`orders-${scope}-${new Date().toISOString().slice(0,10)}.csv`});
   a.click();URL.revokeObjectURL(a.href);
 });
 
@@ -275,11 +297,14 @@ $('#pk-undo').addEventListener('click', async e => {
 
 // 인쇄용 명단: 그날 수령분을 수량 많은 순 → 닉네임 순으로, 체크 칸과 함께. 인터넷이 끊겼을 때 쓰는 종이 백업.
 // 입금 미확인은 아래 따로 표(회색 바탕, 전달 금지). 수량이 바뀌는 줄에 두 줄 선을 그어 묶음을 나눈다.
-for (const e of Object.values(EVENTS)) for (const d of e.dates) $('#pk-print-date').insertAdjacentHTML('beforeend', `<option value="${d.value}">${esc(e.name)} ${d.label}</option>`);
-{
+/** 인쇄용 명단 날짜: 고른 행사의 수령일만. 오늘 이후 첫 날을 미리 고른다. */
+function fillPrintDates() {
+  const e = EVENTS[scope];
+  $('#pk-print-date').innerHTML = e.dates.map(d => `<option value="${d.value}">${esc(e.name)} ${d.label}</option>`).join('');
   const today = kstDay(), opt = [...$('#pk-print-date').options].find(o => o.value >= today);
   if (opt) $('#pk-print-date').value = opt.value;
 }
+applyScope();fillPrintDates();
 $('#pk-print').addEventListener('click', () => {
   const date = $('#pk-print-date').value;
   const ofDay = orders.filter(o => o.pickupDate === date);
