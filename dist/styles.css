@@ -419,3 +419,4 @@ dialog::backdrop{background:#000b}
 .modal-shell .notice-mine + .notice-openchat{margin-top:10px;width:100%}
 @media(max-width:700px){.modal-shell .notice-thanks{font-size:10px}.modal-shell .notice-mine{font-size:11px}}
 .pickup-info .pickup-notice-link{display:inline-block;margin-top:14px;cursor:pointer}
+.pickup-terms{margin:4px 0 14px}.pickup-terms b{display:block;font-size:11px;font-weight:700;color:var(--lime);margin-bottom:2px}.pickup-terms-consent{border-top:0;padding-top:0;margin-bottom:22px}

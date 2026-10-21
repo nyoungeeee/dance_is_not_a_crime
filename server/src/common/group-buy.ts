@@ -21,10 +21,12 @@ export interface Round {
   ordersCloseAt: Date;
   paymentDeadline: Date;
   events: readonly string[];
+  /** 주문서 제출 때 수령 안내(수령 시간·미수령 시 택배·환불 불가, 기부·나눔) 동의를 받는 차수. */
+  pickupTerms?: boolean;
 }
 export const ROUNDS: Round[] = [
   { id: 1, ordersCloseAt: new Date('2026-10-13T22:00:00+09:00'), paymentDeadline: new Date('2026-10-13T23:59:59.999+09:00'), events: ['inmufe'] },
-  { id: 2, ordersCloseAt: new Date('2026-10-25T22:00:00+09:00'), paymentDeadline: new Date('2026-10-25T23:59:59.999+09:00'), events: ['sejong'] },
+  { id: 2, ordersCloseAt: new Date('2026-10-25T22:00:00+09:00'), paymentDeadline: new Date('2026-10-25T23:59:59.999+09:00'), events: ['sejong'], pickupTerms: true },
 ];
 
 /** 지금 주문을 받는(또는 마지막으로 받은) 차수. */

@@ -73,6 +73,8 @@ export class OrdersService {
     if (!ordersOpen(now)) fail(409, 'ORDERS_CLOSED', '주문 접수가 마감되었어요.');
     const round = currentRound(now);
     const input = validateOrderInput(body, round);
+    const agreed = (body as { pickupTermsAgreed?: unknown } | null)?.pickupTermsAgreed === true;
+    if (round.pickupTerms && !agreed) fail(400, 'PICKUP_TERMS_REQUIRED', '수령 안내를 읽고 동의해주세요.');
     const requestKey = requestKeyOf(body);
     return this.prisma.$transaction(async (tx) => {
       if (requestKey) {
@@ -95,7 +97,8 @@ export class OrdersService {
           status: 'payment_pending',
         },
       });
-      await this.log(tx, order.id, 'user', userId, null, 'payment_pending', '주문서 제출');
+      // 수령 안내 동의는 주문 기록에 시각과 함께 남긴다(미수령 시 택배·환불 불가 안내의 근거).
+      await this.log(tx, order.id, 'user', userId, null, 'payment_pending', round.pickupTerms ? '주문서 제출 · 수령 안내 동의' : '주문서 제출');
       return { order: orderDto(order), created: true };
     });
   }
