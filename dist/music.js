@@ -57,7 +57,7 @@ function stopBeats() {
   clearStar();
   lastTick = -1;
 }
-function jump() {
+function jump(bpm = tracks[index].bpm) {
   clearJump();
   const bounds = ticker.getBoundingClientRect();
   if (bounds.bottom <= 0 || bounds.top >= window.innerHeight) return;
@@ -69,10 +69,31 @@ function jump() {
   if (!candidates.length) return;
   activeLetter = candidates[Math.floor(Math.random() * candidates.length)];
   previousLetter = activeLetter;
-  const duration = Math.min(380, Math.max(220, 60000 / tracks[index].bpm * .6));
+  const duration = Math.min(380, Math.max(220, 60000 / bpm * .6));
   activeLetter.style.setProperty('--jump-duration', `${duration}ms`);
   activeLetter.classList.add('is-jumping');
   jumpTimer = setTimeout(clearJump, duration);
+}
+// 음악이 멈춰 있을 때: 40~60 BPM 중 무작위 템포를 4박마다 새로 골라 천천히 움직인다. 재생하면 곡 BPM으로 넘어간다.
+const IDLE_BPM = [40, 60], IDLE_BEATS_PER_TEMPO = 4;
+let idleTimer = null, idleBpm = 0, idleBeat = 0;
+const isPlaying = () => !audio.paused && !audio.ended;
+function idleTick() {
+  idleTimer = null;
+  if (isPlaying()) return;
+  if (idleBeat % IDLE_BEATS_PER_TEMPO === 0) idleBpm = IDLE_BPM[0] + Math.floor(Math.random() * (IDLE_BPM[1] - IDLE_BPM[0] + 1));
+  idleBeat++;
+  if (!reducedMotion.matches && !document.hidden) {jump(idleBpm);jumpSkeletons(idleBpm);jumpStar(idleBpm);}
+  idleTimer = setTimeout(idleTick, 60000 / idleBpm);
+}
+function startIdle() {
+  if (idleTimer || isPlaying()) return;
+  idleBeat = 0;
+  idleTimer = setTimeout(idleTick, 800);
+}
+function stopIdle() {
+  clearTimeout(idleTimer);
+  idleTimer = null;
 }
 function tick() {
   if (audio.paused || audio.ended) {stopBeats();return;}
@@ -131,10 +152,10 @@ toggle.addEventListener('click', () => {
 });
 prev.addEventListener('click', () => chooseTrack(index - 1, !audio.paused));
 next.addEventListener('click', () => chooseTrack(index + 1, !audio.paused));
-audio.addEventListener('play', () => {awaitingGesture = false;render();if (!frame) tick();});
-audio.addEventListener('pause', () => {render();stopBeats();});
+audio.addEventListener('play', () => {awaitingGesture = false;stopIdle();stopBeats();render();if (!frame) tick();});
+audio.addEventListener('pause', () => {render();stopBeats();startIdle();});
 audio.addEventListener('ended', () => chooseTrack(index + 1, true));
-audio.addEventListener('error', () => {stopBeats();render();status.textContent = '음악을 불러오지 못했어요. 다음 곡을 선택하거나 다시 재생해주세요.';});
+audio.addEventListener('error', () => {stopBeats();startIdle();render();status.textContent = '음악을 불러오지 못했어요. 다음 곡을 선택하거나 다시 재생해주세요.';});
 audio.addEventListener('seeking', stopBeats);
 audio.addEventListener('seeked', () => {if (!audio.paused && !frame) tick();});
 document.addEventListener('visibilitychange', () => {clearJump();clearSkeletons();clearStar();});
@@ -143,5 +164,6 @@ reducedMotion.addEventListener('change', () => {clearJump();clearSkeletons();cle
 audio.addEventListener('timeupdate', updateTime);
 audio.addEventListener('loadedmetadata', updateTime);
 audio.addEventListener('durationchange', updateTime);
+startIdle();
 
 // 음악은 사용자가 재생 버튼(하단 플레이어·메인 이미지 안내)을 눌렀을 때만 시작한다. 자동재생·첫 터치 재생은 하지 않는다.
