@@ -41,6 +41,7 @@ function renderSummary() {
     ['입금 대기', `${count('payment_pending')}건`],
     ['취소 확인 요청', `${count('cancel_requested')}건`],
     ['진행 중 주문 수량 (최소 50개)', `${live.reduce((a, o) => a + o.quantity, 0)}개 / ${GROUP_BUY.minTotalQuantity}개`],
+    ['다음 청원 참여 동의', `${new Set(live.filter(o => o.logs.some(l => l.note?.includes('다음 청원 참여 동의'))).map(o => o.userId)).size}명`],
     ['입금 확인 완료', `${paid.length}건 · ${paid.reduce((a, o) => a + o.quantity, 0)}개 · ${won(paid.reduce((a, o) => a + o.totalAmount, 0))}`],
     ...Object.entries(byDate).map(([k, q]) => [`수령 ${k}`, `${q}개`]),
   ].map(([k, v]) => `<div><span>${esc(k)}</span><strong>${esc(v)}</strong></div>`).join('');
