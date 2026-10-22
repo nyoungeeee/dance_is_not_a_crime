@@ -5,7 +5,7 @@
   <meta name="robots" content="noindex">
   <title>운영자 화면 | 춤은 불법이 아니다</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%23161616'/%3E%3Ctext x='32' y='48' text-anchor='middle' font-size='49' fill='%238fd8ff'%3E✳︎%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/admin.css?v=16"><script type="module" src="/admin.js?v=19"></script>
+  <link rel="stylesheet" href="/admin.css?v=17"><script type="module" src="/admin.js?v=20"></script>
 </head>
 <body>
   <header class="bar"><a href="/" class="brand">춤은 불법이 아니다 <small>운영자</small></a><div class="scope" role="group" aria-label="행사"><button data-scope="sejong" aria-pressed="true">세종</button><button data-scope="inmufe" aria-pressed="false">인뮤페</button></div><nav><button data-tab="orders" class="tab active">주문</button><button data-tab="pickup" class="tab">현장 수령</button><button data-tab="threads" class="tab">문의 <span id="thread-unread" class="badge" hidden></span></button><button data-tab="ledger" class="tab">정산</button></nav><span id="who"></span></header>
@@ -14,7 +14,12 @@
     <section id="orders" hidden>
       <div id="summary" class="summary"></div>
       <div class="filters"><select id="status-filter" aria-label="상태"><option value="">전체 상태</option></select><input id="search" type="search" placeholder="주문번호·닉네임·입금자명 검색" aria-label="검색"><button id="reload" class="ghost">새로고침</button><button id="csv" class="ghost">CSV 내려받기</button></div>
-      <div class="table-wrap"><table><thead><tr><th>주문번호</th><th>닉네임</th><th>입금자명</th><th>수량</th><th>금액</th><th>수령</th><th>상태</th><th>접수</th><th>처리</th></tr></thead><tbody id="order-rows"></tbody></table></div>
+      <form id="bulk" class="bulk" hidden>
+        <div class="bulk-head"><strong id="bulk-count"></strong><button type="button" class="ghost small" id="bulk-clear">선택 해제</button></div>
+        <textarea id="bulk-text" maxlength="1000" rows="4" placeholder="예) {닉네임} 님, 주문 {주문} 수령 안내드려요." aria-label="보낼 메시지"></textarea>
+        <div class="bulk-foot"><span class="muted small"><code>{닉네임}</code> <code>{주문}</code>은 사람마다 바뀌어요(주문 = 고른 주문 중 그 사람 것). 각자의 문의 대화로 가요.</span><span id="bulk-len" class="muted small">0 / 500</span><button class="primary" id="bulk-send">보내기</button></div>
+      </form>
+      <div class="table-wrap"><table><thead><tr><th class="pick"><input type="checkbox" id="pick-all" aria-label="보이는 주문 모두 선택"></th><th>주문번호</th><th>닉네임</th><th>입금자명</th><th>수량</th><th>금액</th><th>수령</th><th>상태</th><th>접수</th><th>처리</th></tr></thead><tbody id="order-rows"></tbody></table></div>
     </section>
     <section id="pickup" hidden>
       <div id="pk-stats" class="summary"></div>
