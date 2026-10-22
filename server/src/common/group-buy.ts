@@ -30,7 +30,7 @@ export interface Round {
 }
 export const ROUNDS: Round[] = [
   { id: 1, ordersCloseAt: new Date('2026-10-13T22:00:00+09:00'), paymentDeadline: new Date('2026-10-13T23:59:59.999+09:00'), events: ['inmufe'] },
-  { id: 2, ordersCloseAt: new Date('2026-10-25T22:00:00+09:00'), paymentDeadline: new Date('2026-10-25T23:59:59.999+09:00'), events: ['sejong'], pickupTerms: true, petitionPledge: true, accepting: false },
+  { id: 2, ordersCloseAt: new Date('2026-10-25T22:00:00+09:00'), paymentDeadline: new Date('2026-10-25T23:59:59.999+09:00'), events: ['sejong'], pickupTerms: true, petitionPledge: true },
 ];
 
 /** 지금 주문을 받는(또는 마지막으로 받은) 차수. */

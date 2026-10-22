@@ -1,6 +1,6 @@
 import {validateMessage} from './messages.mjs?v=24';
-import {EVENTS, validateNickname, validateOrder, pickupDateLabel} from './account-state.mjs?v=17';
-import {GROUP_BUY, ROUNDS, ordersOpen, ordersNotYetOpen, ORDER_STATUS, paymentWindowOpen, parseQuantity, orderAmount, getOrderCountdown} from './group-buy.mjs?v=20';
+import {EVENTS, validateNickname, validateOrder, pickupDateLabel} from './account-state.mjs?v=18';
+import {GROUP_BUY, ROUNDS, ordersOpen, ordersNotYetOpen, ORDER_STATUS, paymentWindowOpen, parseQuantity, orderAmount, getOrderCountdown} from './group-buy.mjs?v=21';
 import {api} from './api.mjs?v=2';
 const $ = selector => document.querySelector(selector);
 const modal = $('#modal'), content = $('#modal-content'), form = $('#order-form');
