@@ -9,8 +9,6 @@ export const ROUNDS = Object.freeze({
     ordersCloseAt: '2026-10-25T22:00:00+09:00', ordersCloseLabel: '10/25(일) 22:00',
     paymentDeadline: '2026-10-25T23:59:59.999+09:00', paymentDeadlineLabel: '10/25(일) 23:59',
     supplierOrderLabel: '10/26(월)', goodsArrivalLabel: '10/30(금)까지 예정', events: Object.freeze(['sejong']),
-    // false면 오픈 전(새 주문 안 받음). 서버 ROUNDS의 accepting과 같이 바꾼다.
-    accepting: false,
   }),
 });
 // 지금 주문을 받는 차수. 이 화면의 새 주문서·카운트다운·안내 문구는 이 차수 기준이다.

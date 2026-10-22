@@ -1,4 +1,4 @@
-import {GROUP_BUY} from './group-buy.mjs?v=20';
+import {GROUP_BUY} from './group-buy.mjs?v=21';
 // 화면에서 미리 안내하기 위한 검증. 실제 판단은 서버(server/src/common/group-buy.ts)가 한다.
 export const EVENTS = Object.freeze({
   inmufe: {name: "경기인디뮤직페스티벌", fullName: "경기인디뮤직페스티벌", dates: [{value:'2026-10-17',label:'10/17(토)'},{value:'2026-10-18',label:'10/18(일)'}]},
