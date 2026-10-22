@@ -45,6 +45,12 @@ export class AdminController {
     return { orders: await this.orders.adminPickup(admin.id, body?.orderIds, true) };
   }
 
+  /** 고른 주문의 주인들에게 한 번에 메시지({닉네임}·{주문} 치환). */
+  @Post('messages')
+  async broadcast(@CurrentUser() admin: SessionUser, @Body() body: { orderIds?: unknown; text?: unknown }) {
+    return this.messages.broadcast(admin.id, body?.orderIds, body?.text);
+  }
+
   @Get('threads')
   async threads() {
     return { threads: await this.messages.threads() };

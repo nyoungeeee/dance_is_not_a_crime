@@ -491,3 +491,37 @@ test('수령 포기(forfeited): 운영자만, 끝난 주문(취소·전달·수�
   assert.equal((await admin.json('POST', `/api/admin/orders/${o.id}/pickup`, { event: 'sejong', pickupDate: '2026-11-01' })).status, 409);
   assert.equal((await user.json('DELETE', '/api/me')).status, 200);
 });
+
+test('운영자 단체 메시지: 고른 주문의 주인에게 한 번씩, {닉네임}·{주문} 치환, 운영자만, 500자 넘으면 아무에게도 안 보냄', async () => {
+  const a = new Client();
+  await a.login('6601');
+  await a.json('PATCH', '/api/me', { nickname: '단체가' });
+  const b = new Client();
+  await b.login('6602');
+  await b.json('PATCH', '/api/me', { nickname: '단체나' });
+  const a1 = (await a.json('POST', '/api/orders', { ...ORDER, quantity: 2, requestKey: key() })).body.order;
+  const a2 = (await a.json('POST', '/api/orders', { ...ORDER, quantity: 1, requestKey: key() })).body.order;
+  const b1 = (await b.json('POST', '/api/orders', { ...ORDER, quantity: 3, requestKey: key() })).body.order;
+  const admin = new Client();
+  await admin.login('9999');
+  const send = (c: Client, body: unknown) => c.json('POST', '/api/admin/messages', body);
+
+  assert.equal((await send(a, { orderIds: [a1.id], text: '안녕' })).status, 403);
+  assert.equal((await send(admin, { orderIds: [], text: '안녕' })).status, 400);
+  assert.equal((await send(admin, { orderIds: [a1.id], text: ' ' })).status, 400);
+  assert.equal((await send(admin, { orderIds: ['DNC-NOPE'], text: '안녕' })).status, 404);
+  // 치환 후 500자를 넘는 사람이 있으면 아무에게도 보내지 않는다
+  assert.equal((await send(admin, { orderIds: [a1.id, b1.id], text: 'x'.repeat(495) + '{주문}' })).status, 400);
+  assert.equal((await a.json('GET', '/api/me')).body.unread, 0);
+
+  const r = await send(admin, { orderIds: [a1.id, a2.id, b1.id, a1.id], text: '{닉네임} 님, 주문 {주문} 확인 부탁드려요.' });
+  assert.equal(r.status, 201);
+  assert.deepEqual(r.body, { sent: 2, skipped: 0 });
+  const aMsgs = (await a.json('GET', '/api/messages')).body.messages;
+  assert.equal(aMsgs.length, 1);
+  assert.equal(aMsgs[0].text, `단체가 님, 주문 ${a1.id} 2개, ${a2.id} 1개 확인 부탁드려요.`);
+  assert.equal(aMsgs[0].sender, 'operator');
+  const bMsgs = (await b.json('GET', '/api/messages')).body.messages;
+  assert.equal(bMsgs[0].text, `단체나 님, 주문 ${b1.id} 3개 확인 부탁드려요.`);
+  assert.equal((await b.json('GET', '/api/me')).body.unread, 0); // 대화를 열어 읽음
+});

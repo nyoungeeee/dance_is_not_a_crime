@@ -64,14 +64,61 @@ function renderSummary() {
 function renderOrders() {
   const status = $('#status-filter').value, q = $('#search').value.trim().toLowerCase();
   const rows = orders.filter(o => (!status || o.status === status) && (!q || [o.id, o.nickname, o.payerName].some(v => v.toLowerCase().includes(q))));
-  $('#order-rows').innerHTML = rows.map(o => `<tr data-id="${esc(o.id)}">
+  shownRows = rows;
+  $('#order-rows').innerHTML = rows.map(o => `<tr data-id="${esc(o.id)}" class="${picked.has(o.id) ? 'is-picked' : ''}">
+    <td class="pick"><input type="checkbox" data-pick-order="${esc(o.id)}" ${picked.has(o.id) ? 'checked' : ''} aria-label="${esc(o.nickname)} ${esc(o.id)} 선택"></td>
     <td>${esc(o.id)} <small class="muted">${o.round}차</small><details><summary>기록 ${o.logs.length}</summary><ol>${o.logs.map(l => `<li>${time(l.createdAt)} ${l.actor === 'admin' ? '운영자' : '사용자'}${l.fromStatus === l.toStatus ? '' : ` → ${esc(ORDER_STATUS[l.toStatus] ?? l.toStatus)}`}${l.note ? ` · ${esc(l.note)}` : ''}</li>`).join('')}</ol></details></td>
     <td>${esc(o.nickname)}</td><td><strong>${esc(o.payerName)}</strong></td><td class="num">${o.quantity}</td><td class="num">${won(o.totalAmount)}</td>
     <td>${esc(EVENTS[o.event]?.name ?? o.event)}<br><small class="muted">${esc(pickupDateLabel(o.event, o.pickupDate))}${carried(o) ? ' · 1차 이월' : ''}</small></td>
     <td><span class="status s-${esc(o.status)}">${esc(ORDER_STATUS[o.status] ?? o.status)}</span></td><td>${time(o.createdAt)}</td>
     <td><div class="act"><select aria-label="바꿀 상태">${Object.entries(ORDER_STATUS).map(([v, l]) => `<option value="${v}" ${v === o.status ? 'selected' : ''}>${l}</option>`).join('')}</select><input placeholder="메모 (예: 입금 확인)" maxlength="200" aria-label="메모"><button class="primary" data-save>저장</button></div>${CLOSED.includes(o.status) ? '' : `<div class="act move"><select aria-label="바꿀 수령일" data-pickup>${PICKUP_CHOICES.map(([v, l]) => `<option value="${v}" ${v === `${o.event}|${o.pickupDate}` ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select><button class="ghost" data-move>수령 변경</button></div>`}</td>
-  </tr>`).join('') || '<tr><td colspan="9" class="muted">주문이 없어요.</td></tr>';
+  </tr>`).join('') || '<tr><td colspan="10" class="muted">주문이 없어요.</td></tr>';
+  renderBulk();
 }
+// 단체 메시지: 주문을 골라(사람 단위로 한 번씩) 각자의 문의 대화로 보낸다. 치환·검사는 서버가 한다.
+const picked = new Set();
+let shownRows = [];
+function renderBulk() {
+  for (const id of [...picked]) if (!orders.some(o => o.id === id)) picked.delete(id);
+  const people = new Set(orders.filter(o => picked.has(o.id)).map(o => o.userId)).size;
+  $('#bulk').hidden = !picked.size;
+  $('#bulk-count').textContent = `${picked.size}건 선택 · ${people}명에게 보내요`;
+  const all = $('#pick-all'), shown = shownRows.filter(o => picked.has(o.id)).length;
+  all.checked = shownRows.length > 0 && shown === shownRows.length;
+  all.indeterminate = shown > 0 && shown < shownRows.length;
+}
+function bulkPreview() {
+  const mine = orders.filter(o => picked.has(o.id)), first = mine[0];
+  const ofFirst = mine.filter(o => o.userId === first.userId);
+  return $('#bulk-text').value.trim().replaceAll('{닉네임}', first.nickname).replaceAll('{주문}', ofFirst.map(o => `${o.id} ${o.quantity}개`).join(', '));
+}
+$('#order-rows').addEventListener('change', e => {
+  const box = e.target.closest('[data-pick-order]');if (!box) return;
+  box.checked ? picked.add(box.dataset.pickOrder) : picked.delete(box.dataset.pickOrder);
+  box.closest('tr').classList.toggle('is-picked', box.checked);
+  renderBulk();
+});
+$('#pick-all').addEventListener('change', e => {
+  for (const o of shownRows) e.target.checked ? picked.add(o.id) : picked.delete(o.id);
+  renderOrders();
+});
+$('#bulk-clear').addEventListener('click', () => {picked.clear();renderOrders();});
+$('#bulk-text').addEventListener('input', () => {const n = [...$('#bulk-text').value.trim()].length;$('#bulk-len').textContent = `${n} / 500`;$('#bulk-len').classList.toggle('over', n > 500);});
+$('#bulk').addEventListener('submit', async e => {
+  e.preventDefault();
+  const text = $('#bulk-text').value.trim(), btn = $('#bulk-send');
+  if (!text) {toast('보낼 메시지를 입력해주세요.');return;}
+  const people = new Set(orders.filter(o => picked.has(o.id)).map(o => o.userId)).size;
+  if (!confirm(`${people}명에게 보낼까요? 보낸 메시지는 지울 수 없어요.\n\n첫 번째 사람에게 가는 내용:\n${bulkPreview()}`)) return;
+  await busy(btn, async () => {
+    try {
+      const r = await api('POST', '/api/admin/messages', {orderIds:[...picked], text});
+      toast(`${r.sent}명에게 보냈어요.${r.skipped ? ` 탈퇴한 ${r.skipped}명은 건너뛰었어요.` : ''}`);
+      picked.clear();$('#bulk-text').value = '';$('#bulk-len').textContent = '0 / 500';
+      renderOrders();loadThreads().catch(() => {});
+    } catch (err) {toast(err.message);}
+  });
+});
 async function loadOrders() {
   allOrders = (await api('GET', '/api/admin/orders')).orders;
   applyScope();
@@ -82,7 +129,7 @@ document.querySelectorAll('[data-scope]').forEach(b => b.addEventListener('click
   if (scope === b.dataset.scope) return;
   scope = b.dataset.scope;
   try {localStorage.setItem('admin-scope', scope);} catch {}
-  applyScope();fillPrintDates();
+  applyScope();fillPrintDates();picked.clear();
   $('#pk-q').value = '';pickedUser = null;
   renderSummary();renderOrders();renderPickup();
 }));
