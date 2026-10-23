@@ -172,3 +172,32 @@ tr.is-picked td{background:#1c2a31}
 .bulk-foot{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.bulk-foot span:first-child{flex:1;min-width:240px}
 .bulk code{color:var(--accent);font-size:12px}
 .bulk .over{color:#ff8a7a}
+/* 상태 빠른 필터 */
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.chips button{border:1px solid var(--line);background:none;border-radius:999px;padding:6px 12px;font-size:13px;color:var(--muted)}
+.chips button b{color:var(--ink);margin-left:2px}
+.chips button[aria-pressed="true"]{background:var(--ink);color:#141617;border-color:var(--ink)}.chips button[aria-pressed="true"] b{color:#141617}
+td .quick{display:block;margin-top:6px;padding:5px 10px;font-size:12px;white-space:nowrap}
+/* 폰: 표 대신 카드 */
+.ocards{display:none;list-style:none;margin:0;padding:0}
+@media(max-width:700px){
+  .bar{gap:10px;padding:10px 12px}.bar nav{order:3;flex-basis:100%;overflow-x:auto}.tab{flex-shrink:0;padding:8px 14px}#who{display:none}
+  .summary{flex-wrap:nowrap;overflow-x:auto;gap:6px;margin:0 -12px 12px;padding:0 12px;scrollbar-width:none}.summary div{flex:0 0 auto;min-width:0;padding:7px 10px}.summary span{white-space:nowrap}.summary strong{font-size:15px;white-space:nowrap}
+  .filters #search{flex-basis:100%;order:-1;font-size:16px;padding:11px 12px}
+  .filters select,.filters .ghost{font-size:14px}
+  input,select,textarea{font-size:16px}
+  .table-wrap{display:none}
+  .ocards{display:grid;gap:10px}
+  .ocard{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px;display:grid;gap:6px}
+  .ocard.is-picked{border-color:var(--accent);background:#1c2a31}
+  .oc-top{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}.oc-top small{margin-left:auto}
+  .oc-pick input{width:20px;height:20px;accent-color:var(--accent)}
+  .oc-main{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+  .oc-main strong{font-size:22px;font-weight:800}.oc-amt{font-variant-numeric:tabular-nums;white-space:nowrap}
+  .oc-sub{margin:0;font-size:13px;color:var(--muted)}
+  .ocard .quick{width:100%;padding:13px;font-size:16px;border-radius:6px;margin-top:4px}
+  .oc-more{margin-top:2px;font-size:13px}.oc-more summary{padding:6px 0;cursor:pointer}
+  .oc-more .act{margin-top:8px}.oc-more .act select,.oc-more .act input{flex:1;min-width:0}.oc-more .act input{width:auto}
+  .oc-more .act button{padding:10px 14px}
+  .bulk-foot span:first-child{min-width:0}
+}

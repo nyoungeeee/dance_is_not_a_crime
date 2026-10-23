@@ -61,18 +61,40 @@ function renderSummary() {
     ...Object.entries(byDate).map(([k, q]) => [`수령 ${k}`, `${q}개`]),
   ].filter(Boolean).map(([k, v]) => `<div><span>${esc(k)}</span><strong>${esc(v)}</strong></div>`).join('');
 }
+// 입금 확인을 한 번에 누를 수 있는 상태(사용자가 아직 입금 확인 전)
+const CAN_CONFIRM = ['payment_pending','verification_requested'];
+const statusSelect = o => `<select aria-label="바꿀 상태" data-status-sel>${Object.entries(ORDER_STATUS).map(([v, l]) => `<option value="${v}" ${v === o.status ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
+const moveControl = o => CLOSED.includes(o.status) ? '' : `<div class="act move"><select aria-label="바꿀 수령일" data-pickup>${PICKUP_CHOICES.map(([v, l]) => `<option value="${v}" ${v === `${o.event}|${o.pickupDate}` ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select><button class="ghost" data-move>수령 변경</button></div>`;
+const logList = o => `<ol>${o.logs.map(l => `<li>${time(l.createdAt)} ${l.actor === 'admin' ? '운영자' : '사용자'}${l.fromStatus === l.toStatus ? '' : ` → ${esc(ORDER_STATUS[l.toStatus] ?? l.toStatus)}`}${l.note ? ` · ${esc(l.note)}` : ''}</li>`).join('')}</ol>`;
+const quickButton = o => CAN_CONFIRM.includes(o.status) ? `<button class="primary quick" data-quick-paid>입금 확인 완료</button>` : '';
+/** 상태 빠른 필터. 누르면 상태 선택과 같은 효과. */
+function renderChips() {
+  const current = $('#status-filter').value, n = s => orders.filter(o => o.status === s).length;
+  $('#status-chips').innerHTML = [['verification_requested'], ['payment_pending'], ['paid'], ['cancel_requested'], ['', '전체', orders.length]]
+    .map(([v, label = ORDER_STATUS[v], count = n(v)]) => (v && !count && v !== current) ? '' : `<button type="button" data-chip="${v}" aria-pressed="${v === current}">${esc(label)} <b>${count}</b></button>`).join('');
+}
 function renderOrders() {
   const status = $('#status-filter').value, q = $('#search').value.trim().toLowerCase();
   const rows = orders.filter(o => (!status || o.status === status) && (!q || [o.id, o.nickname, o.payerName].some(v => v.toLowerCase().includes(q))));
   shownRows = rows;
+  renderChips();
+  // 넓은 화면: 표
   $('#order-rows').innerHTML = rows.map(o => `<tr data-id="${esc(o.id)}" class="${picked.has(o.id) ? 'is-picked' : ''}">
     <td class="pick"><input type="checkbox" data-pick-order="${esc(o.id)}" ${picked.has(o.id) ? 'checked' : ''} aria-label="${esc(o.nickname)} ${esc(o.id)} 선택"></td>
-    <td>${esc(o.id)} <small class="muted">${o.round}차</small><details><summary>기록 ${o.logs.length}</summary><ol>${o.logs.map(l => `<li>${time(l.createdAt)} ${l.actor === 'admin' ? '운영자' : '사용자'}${l.fromStatus === l.toStatus ? '' : ` → ${esc(ORDER_STATUS[l.toStatus] ?? l.toStatus)}`}${l.note ? ` · ${esc(l.note)}` : ''}</li>`).join('')}</ol></details></td>
+    <td>${esc(o.id)} <small class="muted">${o.round}차</small><details><summary>기록 ${o.logs.length}</summary>${logList(o)}</details></td>
     <td>${esc(o.nickname)}</td><td><strong>${esc(o.payerName)}</strong></td><td class="num">${o.quantity}</td><td class="num">${won(o.totalAmount)}</td>
     <td>${esc(EVENTS[o.event]?.name ?? o.event)}<br><small class="muted">${esc(pickupDateLabel(o.event, o.pickupDate))}${carried(o) ? ' · 1차 이월' : ''}</small></td>
-    <td><span class="status s-${esc(o.status)}">${esc(ORDER_STATUS[o.status] ?? o.status)}</span></td><td>${time(o.createdAt)}</td>
-    <td><div class="act"><select aria-label="바꿀 상태">${Object.entries(ORDER_STATUS).map(([v, l]) => `<option value="${v}" ${v === o.status ? 'selected' : ''}>${l}</option>`).join('')}</select><input placeholder="메모 (예: 입금 확인)" maxlength="200" aria-label="메모"><button class="primary" data-save>저장</button></div>${CLOSED.includes(o.status) ? '' : `<div class="act move"><select aria-label="바꿀 수령일" data-pickup>${PICKUP_CHOICES.map(([v, l]) => `<option value="${v}" ${v === `${o.event}|${o.pickupDate}` ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select><button class="ghost" data-move>수령 변경</button></div>`}</td>
+    <td><span class="status s-${esc(o.status)}">${esc(ORDER_STATUS[o.status] ?? o.status)}</span>${quickButton(o)}</td><td>${time(o.createdAt)}</td>
+    <td><div class="act">${statusSelect(o)}<input placeholder="메모 (예: 입금 확인)" maxlength="200" aria-label="메모" data-note><button class="primary" data-save>저장</button></div>${moveControl(o)}</td>
   </tr>`).join('') || '<tr><td colspan="10" class="muted">주문이 없어요.</td></tr>';
+  // 폰: 카드. 입금자명·금액을 크게 띄워 통장 내역과 바로 맞춰 보고, 입금 확인은 버튼 하나로.
+  $('#order-cards').innerHTML = rows.map(o => `<li class="ocard ${picked.has(o.id) ? 'is-picked' : ''}" data-id="${esc(o.id)}">
+    <div class="oc-top"><label class="oc-pick"><input type="checkbox" data-pick-order="${esc(o.id)}" ${picked.has(o.id) ? 'checked' : ''} aria-label="${esc(o.nickname)} ${esc(o.id)} 메시지 보낼 사람으로 선택"></label><span class="status s-${esc(o.status)}">${esc(ORDER_STATUS[o.status] ?? o.status)}</span><small>${esc(o.id)} · ${o.round}차</small></div>
+    <div class="oc-main"><strong>${esc(o.payerName)}</strong><strong class="oc-amt">${won(o.totalAmount)}</strong></div>
+    <p class="oc-sub">${esc(o.nickname)} · ${o.quantity}개 · ${esc(SCOPES[o.event] ?? o.event)} ${esc(pickupDateLabel(o.event, o.pickupDate))}${carried(o) ? ' · 1차 이월' : ''} · ${time(o.createdAt)}</p>
+    ${quickButton(o)}
+    <details class="oc-more"><summary>다른 처리 · 기록 ${o.logs.length}</summary><div class="act">${statusSelect(o)}<input placeholder="메모" maxlength="200" aria-label="메모" data-note><button class="primary" data-save>저장</button></div>${moveControl(o)}${logList(o)}</details>
+  </li>`).join('') || '<li class="muted">주문이 없어요.</li>';
   renderBulk();
 }
 // 단체 메시지: 주문을 골라(사람 단위로 한 번씩) 각자의 문의 대화로 보낸다. 치환·검사는 서버가 한다.
@@ -92,11 +114,31 @@ function bulkPreview() {
   const ofFirst = mine.filter(o => o.userId === first.userId);
   return $('#bulk-text').value.trim().replaceAll('{닉네임}', first.nickname).replaceAll('{주문}', ofFirst.map(o => `${o.id} ${o.quantity}개`).join(', '));
 }
-$('#order-rows').addEventListener('change', e => {
+// 표와 카드가 같은 처리를 쓰도록 #orders에서 한 번에 받는다. 주문은 가장 가까운 [data-id]에서 찾는다.
+const ordersBox = $('#orders');
+ordersBox.addEventListener('change', e => {
   const box = e.target.closest('[data-pick-order]');if (!box) return;
   box.checked ? picked.add(box.dataset.pickOrder) : picked.delete(box.dataset.pickOrder);
-  box.closest('tr').classList.toggle('is-picked', box.checked);
+  document.querySelectorAll(`[data-id="${CSS.escape(box.dataset.pickOrder)}"]`).forEach(el => el.classList.toggle('is-picked', box.checked));
+  document.querySelectorAll(`[data-pick-order="${CSS.escape(box.dataset.pickOrder)}"]`).forEach(el => {el.checked = box.checked;});
   renderBulk();
+});
+$('#status-chips').addEventListener('click', e => {
+  const chip = e.target.closest('[data-chip]');if (!chip) return;
+  $('#status-filter').value = chip.dataset.chip;renderOrders();
+});
+// 입금 확인 완료 한 번에: 통장 내역의 입금자명·금액과 맞춰 보고 누른다. 다음 사람을 바로 찾도록 검색어를 선택해 둔다.
+ordersBox.addEventListener('click', async e => {
+  const btn = e.target.closest('[data-quick-paid]');if (!btn) return;
+  const id = btn.closest('[data-id]').dataset.id, o = orders.find(x => x.id === id);
+  if (!confirm(`입금자명 ${o.payerName} · ${won(o.totalAmount)}\n(${o.nickname}, ${o.quantity}개, ${id})\n\n입금 확인 완료로 바꿀까요?`)) return;
+  await busy(btn, async () => {
+    try {
+      await api('POST', `/api/admin/orders/${encodeURIComponent(id)}/status`, {status:'paid', note:'입금 확인'});
+      await loadOrders();toast(`${o.payerName} ${won(o.totalAmount)} 입금 확인 완료`);
+      if ($('#search').value) $('#search').select();
+    } catch (err) {toast(err.message);}
+  });
 });
 $('#pick-all').addEventListener('change', e => {
   for (const o of shownRows) e.target.checked ? picked.add(o.id) : picked.delete(o.id);
@@ -136,10 +178,10 @@ document.querySelectorAll('[data-scope]').forEach(b => b.addEventListener('click
 $('#search').addEventListener('input', renderOrders);
 $('#reload').addEventListener('click', () => loadOrders().then(() => toast('새로고침했어요.')).catch(e => toast(e.message)));
 // 수령 변경: 1차 경기 미수령분을 문의로 받은 세종 날짜로 옮길 때 쓴다. 메모 칸에 적은 내용이 기록에 같이 남는다.
-$('#order-rows').addEventListener('click', async e => {
+ordersBox.addEventListener('click', async e => {
   const btn = e.target.closest('[data-move]');if (!btn) return;
-  const row = btn.closest('tr'), id = row.dataset.id, order = orders.find(o => o.id === id);
-  const [event, pickupDate] = row.querySelector('[data-pickup]').value.split('|'), note = row.querySelector('.act input').value;
+  const row = btn.closest('[data-id]'), id = row.dataset.id, order = orders.find(o => o.id === id);
+  const [event, pickupDate] = row.querySelector('[data-pickup]').value.split('|'), note = row.querySelector('[data-note]').value;
   if (event === order.event && pickupDate === order.pickupDate) {toast('바뀐 수령일이 없어요.');return;}
   if (!confirm(`${id} (${order.nickname}, ${order.quantity}개, ${ORDER_STATUS[order.status]})\n${EVENTS[order.event]?.name ?? order.event} ${pickupDateLabel(order.event, order.pickupDate)} → ${EVENTS[event].name} ${pickupDateLabel(event, pickupDate)}\n수령일을 바꿀까요?`)) return;
   await busy(btn, async () => {
@@ -147,9 +189,9 @@ $('#order-rows').addEventListener('click', async e => {
     catch (err) {toast(err.message);}
   });
 });
-$('#order-rows').addEventListener('click', async e => {
+ordersBox.addEventListener('click', async e => {
   const btn = e.target.closest('[data-save]');if (!btn) return;
-  const row = btn.closest('tr'), id = row.dataset.id, status = row.querySelector('select').value, note = row.querySelector('input').value;
+  const row = btn.closest('[data-id]'), id = row.dataset.id, status = row.querySelector('[data-status-sel]').value, note = row.querySelector('[data-note]').value;
   const order = orders.find(o => o.id === id);
   if (status === order.status && !note) {toast('바뀐 내용이 없어요.');return;}
   if (!confirm(`${id} (${order.payerName}, ${won(order.totalAmount)})\n${ORDER_STATUS[order.status]} → ${ORDER_STATUS[status]}\n저장할까요?`)) return;
@@ -452,7 +494,8 @@ window.addEventListener('hashchange', () => {const tab = location.hash.slice(1);
   // 열어 둔 동안 1분마다 갱신(입력 중인 메모를 지우지 않도록 주문 표는 포커스가 없을 때만)
   setInterval(() => {
     if (document.hidden) return;
-    if (!$('#orders').hidden && !document.activeElement?.closest('#order-rows')) loadOrders().catch(() => {});
+    // 입력 중이거나 카드의 '다른 처리'를 펼쳐 둔 동안에는 다시 그리지 않는다(입력·펼침이 사라지지 않도록).
+    if (!$('#orders').hidden && !document.activeElement?.closest('#order-rows, #order-cards, #search') && !document.querySelector('.oc-more[open]')) loadOrders().catch(() => {});
     loadThreads().catch(() => {});
   }, 60000);
   // 현장 수령 탭은 다른 폰에서 처리한 것도 보이도록 20초마다(누르는 중이면 건너뜀)
