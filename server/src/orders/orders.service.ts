@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma.service';
 import { fail } from '../common/errors';
 import {
   CLOSED_STATUSES,
+  GIVABLE_STATUSES,
   EVENTS,
   GROUP_BUY,
   MAX_OPEN_ORDERS,
@@ -188,7 +189,8 @@ export class OrdersService {
   }
 
   /**
-   * 수령 행사·날짜 변경(예: 1차 경기 미수령분을 세종으로 이월). 차수·수량·금액·상태는 그대로 두고 기록을 남긴다.
+   * 수령 행사·날짜 변경(예: 1차 경기 미수령분을 세종으로 이월). 차수·수량·금액은 그대로 두고 기록을 남긴다.
+   * 1차 입금 확인 주문을 다른 행사로 옮기면 상태를 1차 이월(carried_over)로, 다시 경기로 돌리면 입금 확인 완료로 바꾼다.
    * 이미 끝난 주문(취소·환불·수령 완료)은 바꾸지 않는다.
    */
   async adminSetPickup(adminUserId: number, orderId: string, event: unknown, pickupDate: unknown, note: unknown) {
@@ -201,9 +203,11 @@ export class OrdersService {
       if (!order) fail(404, 'NO_ORDER', '주문을 찾을 수 없어요.');
       if (CLOSED_STATUSES.includes(order.status)) fail(409, 'ORDER_LOCKED', '취소·환불·수령 완료된 주문은 수령일을 바꿀 수 없어요.');
       if (order.event === event && order.pickupDate === date) fail(409, 'NO_CHANGE', '이미 그 수령일이에요.');
-      const updated = await tx.order.update({ where: { id: orderId }, data: { event, pickupDate: date } });
+      const home = ROUNDS.find((r) => r.id === order.round)?.events.includes(event) ?? true;
+      const status = !GIVABLE_STATUSES.includes(order.status) ? order.status : home ? 'paid' : 'carried_over';
+      const updated = await tx.order.update({ where: { id: orderId }, data: { event, pickupDate: date, status } });
       const change = `수령 변경 ${label(order.event, order.pickupDate)} → ${label(event, date)}`;
-      await this.log(tx, orderId, 'admin', adminUserId, order.status, order.status, memo ? `${change} · ${memo}` : change);
+      await this.log(tx, orderId, 'admin', adminUserId, order.status, status, memo ? `${change} · ${memo}` : change);
       return orderDto(updated);
     });
   }
@@ -211,16 +215,23 @@ export class OrdersService {
   /**
    * 현장 수령: 한 사람의 주문 여러 건을 한 번에 from → to로 바꾼다. 전부 바뀌거나 하나도 안 바뀐다.
    * 상태 조건을 UPDATE의 WHERE에 넣어서, 폰 두 대가 같은 주문을 동시에 눌러도 한 번만 처리된다.
-   * 전달: paid → picked_up (입금 확인 전·이미 수령·취소 주문은 거절), 되돌리기: picked_up → paid.
+   * 전달: paid·carried_over → picked_up (입금 확인 전·이미 수령·취소 주문은 거절), 되돌리기: picked_up → 전달 전 상태.
    */
   async adminPickup(adminUserId: number, orderIds: unknown, undo = false) {
     if (!Array.isArray(orderIds) || !orderIds.length || orderIds.length > 20 || !orderIds.every((id) => typeof id === 'string')) {
       fail(400, 'INVALID_ORDERS', '주문을 골라주세요.');
     }
     const ids = [...new Set(orderIds as string[])];
-    const [from, to, note] = undo ? (['picked_up', 'paid', '현장 수령 되돌리기'] as const) : (['paid', 'picked_up', '현장 수령'] as const);
+    const note = undo ? '현장 수령 되돌리기' : '현장 수령';
     return this.prisma.$transaction(async (tx) => {
       for (const id of ids) {
+        const current = await tx.order.findUnique({ where: { id }, select: { status: true } });
+        // 되돌리기는 마지막 전달 기록의 이전 상태(입금 확인 완료 또는 1차 이월)로
+        const before = undo
+          ? (await tx.orderLog.findFirst({ where: { orderId: id, toStatus: 'picked_up' }, orderBy: { id: 'desc' } }))?.fromStatus
+          : null;
+        const from = undo ? 'picked_up' : current && GIVABLE_STATUSES.includes(current.status) ? current.status : 'paid';
+        const to = undo ? (before && GIVABLE_STATUSES.includes(before) ? before : 'paid') : 'picked_up';
         const { count } = await tx.order.updateMany({ where: { id, status: from }, data: { status: to } });
         if (count === 1) {
           await this.log(tx, id, 'admin', adminUserId, from, to, note);

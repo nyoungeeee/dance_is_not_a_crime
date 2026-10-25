@@ -95,6 +95,8 @@ model Message {
 model LedgerEntry {
   id          Int       @id @default(autoincrement())
   kind        String
+  /// 공동구매 차수(1 = 경기 인뮤페, 2 = 세종). 정산은 차수별로 따로 본다.
+  round       Int       @default(1)
   amount      Int
   quantity    Int?
   memo        String

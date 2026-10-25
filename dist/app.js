@@ -1,6 +1,6 @@
 import {validateMessage} from './messages.mjs?v=24';
-import {EVENTS, validateNickname, validateOrder, pickupDateLabel} from './account-state.mjs?v=18';
-import {GROUP_BUY, ROUNDS, ordersOpen, ordersNotYetOpen, ORDER_STATUS, paymentWindowOpen, parseQuantity, orderAmount, getOrderCountdown} from './group-buy.mjs?v=21';
+import {EVENTS, validateNickname, validateOrder, pickupDateLabel} from './account-state.mjs?v=19';
+import {GROUP_BUY, ROUNDS, ordersOpen, ordersNotYetOpen, ORDER_STATUS, paymentWindowOpen, parseQuantity, orderAmount, getOrderCountdown} from './group-buy.mjs?v=22';
 import {api} from './api.mjs?v=2';
 const $ = selector => document.querySelector(selector);
 const modal = $('#modal'), content = $('#modal-content'), form = $('#order-form');
@@ -17,7 +17,7 @@ const nickname = () => me.user?.nickname ?? null;
 const CLOSED = ['cancelled','refunded','picked_up','forfeited'];
 const findOrder = id => me.orders.find(order => order.id === id) ?? null;
 const openOrders = () => me.orders.filter(order => !CLOSED.includes(order.status));
-const isPaid = order => ['paid','picked_up'].includes(order.status);
+const isPaid = order => ['paid','picked_up','carried_over'].includes(order.status);
 /** 주문 수정·즉시 취소·수령일 변경은 그 주문이 속한 차수의 마감을 따른다(1차 주문은 2차가 열려 있어도 마감). */
 const orderOpen = order => ordersOpen(new Date(), order.round);
 const roundOf = order => ROUNDS[order.round] ?? GROUP_BUY;
@@ -266,7 +266,7 @@ function draftRecord() {const data = new FormData(form);return {quantity:parseQu
 const PROGRESS_STEPS = ['주문서 제출','입금 확인 요청','입금 확인 완료','현장 수령'];
 function orderProgress(record) {
   if(['cancel_requested','cancelled','refunded','forfeited'].includes(record.status)) return `<div class="order-progress is-cancel"><span>${ORDER_STATUS[record.status]}</span></div>`;
-  const done = {payment_pending:1,verification_requested:2,paid:3,picked_up:4}[record.status] ?? 1;
+  const done = {payment_pending:1,verification_requested:2,paid:3,carried_over:3,picked_up:4}[record.status] ?? 1;
   return `<div class="order-progress" aria-label="주문 진행 단계">${PROGRESS_STEPS.map((step, i) => i < done ? `<span class="done">✓ ${step}</span>` : i === done ? `<span class="current" aria-current="step">${i === 3 ? '현장 수령 대기' : step}</span>` : `<span>${step}</span>`).join('')}</div>`;
 }
 function responseRows(record) {
@@ -318,12 +318,12 @@ async function orderDetail(id) {
   const editable = orderOpen(order) && order.status === 'payment_pending';
   const needsDate = !order.pickupDate && orderOpen(order) && ['payment_pending','verification_requested'].includes(order.status);
   const cancellable = !['cancelled','cancel_requested','refunded','picked_up','forfeited'].includes(order.status);
-  const note = {payment_pending:'입금 후 \'입금 확인 요청\'을 눌러주세요. 요청만으로 주문이 확정되지는 않아요.',verification_requested:'운영자가 입금 내역을 확인하고 있어요. 확인되면 \'입금 확인 완료\'로 바뀌어요.',paid:'입금이 확인됐어요. 현장 배부 일정과 장소는 오픈카톡방에서 공지해요.',cancel_requested:'운영자가 취소와 환불 여부를 확인하고 있어요.',cancelled:'취소된 주문이에요.',refunded:'환불이 완료된 주문이에요.',picked_up:'수령이 완료된 주문이에요.',forfeited:'수령을 포기한 주문이에요. 슬로건은 인디 공연장·인디 활동가에게 기부돼요.'}[order.status] ?? '';
+  const note = {payment_pending:'입금 후 \'입금 확인 요청\'을 눌러주세요. 요청만으로 주문이 확정되지는 않아요.',verification_requested:'운영자가 입금 내역을 확인하고 있어요. 확인되면 \'입금 확인 완료\'로 바뀌어요.',paid:'입금이 확인됐어요. 현장 배부 일정과 장소는 오픈카톡방에서 공지해요.',cancel_requested:'운영자가 취소와 환불 여부를 확인하고 있어요.',cancelled:'취소된 주문이에요.',refunded:'환불이 완료된 주문이에요.',picked_up:'수령이 완료된 주문이에요.',forfeited:'수령을 포기한 주문이에요. 슬로건은 인디 공연장·인디 활동가에게 기부돼요.',carried_over:'1차에 입금 확인된 주문을 세종 수령으로 옮겼어요. 수령 장소와 시간은 오픈카톡방에서 공지해요.'}[order.status] ?? '';
   const id_ = escapeHTML(order.id);
   openModal(`<div class="modal-label">내 주문</div><h2 id="modal-title">주문 내역</h2>${orderProgress(order)}${responseRows(order)}<p>${note}</p>${isPaid(order) ? openChatLink() : ''}<div class="modal-actions">${needsDate ? `<button class="button primary" data-action="pickup-date" data-id="${id_}">수령일 추가</button>` : ''}${editable ? `<button class="button primary" data-action="edit" data-id="${id_}">주문서 수정</button>` : ''}${!closed ? `<button class="button secondary" data-action="order" data-id="${id_}">입금 안내</button>` : ''}<button class="button secondary" data-action="my">주문 목록</button></div>${cancellable ? `<button class="danger-action" data-action="cancel-confirm" data-id="${id_}">${order.status === 'payment_pending' && orderOpen(order) ? '주문 취소' : '취소·환불 요청'}</button>` : ''}`);
 }
 /** 입금 안내 버튼 문구. 요청 뒤에는 누를 수 없고 진행 상태를 보여준다. */
-const PAYMENT_BUTTON = {payment_pending:'입금했어요 · 입금 확인 요청',verification_requested:'입금 확인 중…',paid:'입금 확인 완료',cancel_requested:'취소 확인 중…',picked_up:'수령 완료'};
+const PAYMENT_BUTTON = {payment_pending:'입금했어요 · 입금 확인 요청',verification_requested:'입금 확인 중…',paid:'입금 확인 완료',carried_over:'입금 확인 완료',cancel_requested:'취소 확인 중…',picked_up:'수령 완료'};
 function paymentGuide(id) {
   const record = signedIn() ? findOrder(id) : null;
   if(!record || ['cancelled','refunded','forfeited'].includes(record.status)) {myOrders();return;}
@@ -335,8 +335,9 @@ function paymentGuide(id) {
     paid: '입금이 확인됐어요. 현장 배부 일정과 장소는 오픈카톡방에서 공지해요.',
     cancel_requested: '운영자가 취소와 환불 여부를 확인하고 있어요.',
     picked_up: '수령이 완료된 주문이에요.',
+    carried_over: '1차에 입금 확인된 주문을 세종 수령으로 옮겼어요. 수령 장소와 시간은 오픈카톡방에서 공지해요.',
   }[record.status] ?? '';
-  const title = {payment_pending:'입금해주세요',verification_requested:'입금 확인 중이에요',paid:'입금이 확인됐어요',cancel_requested:'취소 확인 중이에요',picked_up:'수령이 완료됐어요'}[record.status] ?? '입금 계좌';
+  const title = {payment_pending:'입금해주세요',verification_requested:'입금 확인 중이에요',paid:'입금이 확인됐어요',carried_over:'입금이 확인됐어요',cancel_requested:'취소 확인 중이에요',picked_up:'수령이 완료됐어요'}[record.status] ?? '입금 계좌';
   openModal(`<div class="modal-label">입금 계좌</div><h2 id="modal-title">${title}</h2>${orderProgress(record)}${responseRows(record)}<div class="payment-details"><p class="payment-bank-name"><strong>${escapeHTML(GROUP_BUY.bankAccount.bank)}</strong><span>예금주 ${escapeHTML(GROUP_BUY.bankAccount.holder)}</span></p><p class="payment-account-number">${escapeHTML(GROUP_BUY.bankAccount.number)}</p><div class="payment-copy-buttons"><button class="text-button" data-action="copy-account" data-id="${id_}">계좌번호 복사</button><button class="text-button" data-action="copy-amount" data-id="${id_}">입금 금액 복사</button></div><p class="payment-deadline">입금 기한: ${roundOf(record).paymentDeadlineLabel}<br>주문 마감: ${roundOf(record).ordersCloseLabel}</p></div><p>${guide}</p>${isPaid(record) ? openChatLink() : ''}<button class="button primary" data-action="payment-request" data-id="${id_}" ${pending ? '' : 'disabled'}>${PAYMENT_BUTTON[record.status] ?? ORDER_STATUS[record.status]}</button><button class="button secondary" data-action="order-detail" data-id="${id_}">주문 내역</button>`);
 }
 function addPickupDate(id) {

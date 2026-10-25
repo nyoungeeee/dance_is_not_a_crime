@@ -54,8 +54,12 @@ export const ORDER_STATUSES = [
   'picked_up',
   // 수령 포기: 입금은 확인됐지만 받지 않기로 한 주문(기부·나눔). 운영자만 바꾼다.
   'forfeited',
+  // 1차 이월: 1차(경기)에 입금 확인된 주문을 세종 수령으로 옮긴 것. 2차 신규 입금과 따로 관리한다. 입금은 받은 상태라 현장 전달할 수 있다.
+  'carried_over',
 ] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
+/** 현장에서 전달할 수 있는(입금 확인된) 상태. */
+export const GIVABLE_STATUSES: readonly string[] = ['paid', 'carried_over'];
 
 /** 끝난 주문. 이 상태의 주문만 있으면 탈퇴할 수 있다. */
 export const CLOSED_STATUSES: readonly string[] = ['cancelled', 'refunded', 'picked_up', 'forfeited'];

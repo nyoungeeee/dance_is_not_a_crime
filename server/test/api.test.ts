@@ -330,7 +330,8 @@ test('정산 장부: 운영자만, 입금 확인 주문과 업체 결제·개인
 
   const admin = new Client();
   await admin.login('9999');
-  const before = (await admin.json('GET', '/api/admin/ledger')).body.summary;
+  const beforeAll = (await admin.json('GET', '/api/admin/ledger')).body;
+  const before = beforeAll.summary, before1 = beforeAll.byRound[1], before2 = beforeAll.byRound[2];
   const o = (await user.json('POST', '/api/orders', ORDER)).body.order;
   await admin.json('POST', `/api/admin/orders/${o.id}/status`, { status: 'paid' });
 
@@ -361,6 +362,17 @@ test('정산 장부: 운영자만, 입금 확인 주문과 업체 결제·개인
   const after = (await admin.json('GET', '/api/admin/ledger')).body;
   assert.ok(!after.entries.some((e: any) => e.id === advanceId));
   assert.equal(after.summary.balance - before.balance, -15900);
+
+  // 차수별 정산: ORDER는 2차 주문, 차수를 안 보낸 내역은 지금 차수(2차)로 들어간다
+  assert.equal((await admin.json('POST', '/api/admin/ledger', { kind: 'advance', amount: 1, round: 9, occurredAt: '2026-10-13T08:55:00+09:00' })).status, 400);
+  r = await admin.json('POST', '/api/admin/ledger', { kind: 'other_in', amount: 700, round: 1, occurredAt: '2026-10-13T09:00:00+09:00' });
+  assert.equal(r.body.entry.round, 1);
+  const split = (await admin.json('GET', '/api/admin/ledger')).body;
+  assert.equal(split.byRound[1].otherIn - before1.otherIn, 700);
+  assert.equal(split.byRound[2].vendor.amount - before2.vendor.amount, vendorAmount);
+  assert.equal(split.byRound[2].orderIncome.amount - before2.orderIncome.amount, o.totalAmount);
+  assert.equal(split.byRound[1].orderIncome.amount, before1.orderIncome.amount);
+  assert.equal(split.byRound[1].balance + split.byRound[2].balance, split.summary.balance);
 });
 
 test('현장 수령: 입금 확인 주문만 전달, 여러 건 한 번에·전부 아니면 하나도 안 바뀜, 동시 전달은 한 번만, 되돌리기', async () => {
@@ -445,14 +457,23 @@ test('1차(경기) 주문: 마감된 차수라 수정·즉시 취소 불가, 운
 
   const r = await move(admin, paid.id, { event: 'sejong', pickupDate: '2026-11-01', note: '문의로 일요일 수령 요청' });
   assert.equal(r.status, 201);
-  assert.deepEqual([r.body.order.event, r.body.order.pickupDate, r.body.order.status, r.body.order.round, r.body.order.totalAmount], ['sejong', '2026-11-01', 'paid', 1, 10600]);
+  assert.deepEqual([r.body.order.event, r.body.order.pickupDate, r.body.order.status, r.body.order.round, r.body.order.totalAmount], ['sejong', '2026-11-01', 'carried_over', 1, 10600]);
   assert.equal((await move(admin, paid.id, { event: 'sejong', pickupDate: '2026-11-01' })).status, 409);
   const logged = (await admin.json('GET', '/api/admin/orders')).body.orders.find((o: any) => o.id === paid.id);
   assert.deepEqual(logged.logs.map((l: any) => l.note), ['수령 변경 경기인디뮤직페스티벌 2026-10-18 → 세종보헤미안뮤직페스티벌 2026-11-01 · 문의로 일요일 수령 요청']);
   assert.equal((await user.json('GET', '/api/me')).body.orders.find((o: any) => o.id === paid.id).pickupDate, '2026-11-01');
 
-  // 이월한 주문도 입금 확인 완료라 그대로 전달할 수 있다.
+  // 1차 이월은 입금 받은 주문이라 그대로 전달할 수 있고, 되돌리면 1차 이월로 돌아간다.
   assert.equal((await admin.json('POST', '/api/admin/pickup', { orderIds: [paid.id] })).status, 201);
+  const undone = (await admin.json('POST', '/api/admin/pickup/undo', { orderIds: [paid.id] })).body.orders[0];
+  assert.equal(undone.status, 'carried_over');
+  // 경기로 되돌리면 다시 입금 확인 완료
+  assert.equal((await move(admin, paid.id, { event: 'inmufe', pickupDate: '2026-10-18' })).body.order.status, 'paid');
+  assert.equal((await move(admin, paid.id, { event: 'sejong', pickupDate: '2026-10-31' })).body.order.status, 'carried_over');
+  // 2차 주문의 일반 전달·되돌리기는 입금 확인 완료로
+  await admin.json('POST', `/api/admin/orders/${fresh.id}/status`, { status: 'paid' });
+  await admin.json('POST', '/api/admin/pickup', { orderIds: [fresh.id] });
+  assert.equal((await admin.json('POST', '/api/admin/pickup/undo', { orderIds: [fresh.id] })).body.orders[0].status, 'paid');
 });
 
 test('오픈 전(accepting: false) 차수는 새 주문을 받지 않는다(서버가 막는다)', async () => {

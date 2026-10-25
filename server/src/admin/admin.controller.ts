@@ -39,7 +39,7 @@ export class AdminController {
     return { orders: await this.orders.adminPickup(admin.id, body?.orderIds) };
   }
 
-  /** 방금 누른 전달 완료를 되돌린다(picked_up → paid). */
+  /** 방금 누른 전달 완료를 되돌린다(picked_up → 전달 전 상태). */
   @Post('pickup/undo')
   async undoPickup(@CurrentUser() admin: SessionUser, @Body() body: { orderIds?: unknown }) {
     return { orders: await this.orders.adminPickup(admin.id, body?.orderIds, true) };

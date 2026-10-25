@@ -1,6 +1,6 @@
 import {api} from './api.mjs?v=2';
-import {EVENTS, pickupDateLabel} from './account-state.mjs?v=18';
-import {GROUP_BUY, CURRENT_ROUND, ORDER_STATUS} from './group-buy.mjs?v=21';
+import {EVENTS, pickupDateLabel} from './account-state.mjs?v=19';
+import {GROUP_BUY, CURRENT_ROUND, ORDER_STATUS} from './group-buy.mjs?v=22';
 // 운영자 화면. 권한은 서버가 검사한다(ADMIN_KAKAO_IDS). 이 파일은 공개돼도 데이터는 운영자에게만 내려온다.
 const $ = s => document.querySelector(s);
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -21,12 +21,14 @@ function toast(m) {$('#toast').textContent = m;$('#toast').classList.add('visibl
 
 for (const [value, label] of Object.entries(ORDER_STATUS)) $('#status-filter').insertAdjacentHTML('beforeend', `<option value="${value}">${label}</option>`);
 const CLOSED = ['cancelled','refunded','picked_up','forfeited'];
-const ROUND_LABEL = {1:'1차 경기', 2:'2차 세종'};
+const ROUND_LABEL = {1:'1차 인뮤페', 2:'2차 세종'};
 /**
- * 행사별 관리: 세종(2차 + 세종으로 옮긴 1차 이월분) / 인뮤페(경기 수령일로 남은 1차 주문). 문의·정산 탭은 행사와 상관없이 하나.
+ * 행사별 관리: 세종(2차 + 세종으로 옮긴 1차 이월분) / 인뮤페(경기 수령일로 남은 1차 주문). 문의 탭은 행사와 상관없이 하나.
+ * 정산 탭은 차수로 나눈다(세종 = 2차, 인뮤페 = 1차). 1차 이월분은 1차에 입금·발주했으므로 1차 정산에 들어간다.
  * 고른 행사는 이 브라우저에 기억한다.
  */
 const SCOPES = {sejong:'세종', inmufe:'인뮤페'};
+const SCOPE_ROUND = {sejong:2, inmufe:1};
 let scope = 'sejong';
 try {const saved = localStorage.getItem('admin-scope');if (Object.hasOwn(SCOPES, saved)) scope = saved;} catch {}
 function applyScope() {
@@ -37,29 +39,52 @@ function applyScope() {
 }
 /** 1차(경기) 주문을 세종 수령일로 옮긴 것. 현장 수령·명단에서 구분해 보여준다. */
 const carried = o => o.round === 1 && o.event !== 'inmufe';
+// 1차 이월(carried_over): 1차에 입금받고 세종 수령으로 옮긴 주문. 2차 신규 입금 확인 완료(paid)와 상태 자체가 다르다.
+// 수령 변경으로 1차 입금 주문을 세종으로 옮기면 서버가 1차 이월로, 경기로 돌리면 입금 확인 완료로 바꾼다. 현장 전달은 둘 다 된다.
+const GIVE = ['paid','carried_over'];
+const statusLabel = o => ORDER_STATUS[o.status] ?? o.status;
+const statusBadge = o => `<span class="status s-${esc(o.status)}">${esc(statusLabel(o))}</span>`;
+const matchStatus = (o, v) => !v || o.status === v;
 // 수령 변경에 고를 수 있는 모든 행사·날짜("행사|날짜")
 const PICKUP_CHOICES = Object.entries(EVENTS).flatMap(([event, e]) => e.dates.map(d => [`${event}|${d.value}`, `${e.name} ${d.label}`]));
 
+const qtyOf = list => list.reduce((a, o) => a + o.quantity, 0);
+const PAID_LIKE = ['paid','picked_up','forfeited','carried_over'];
+const UNPAID = ['payment_pending','verification_requested'];
 function renderSummary() {
-  // 고른 행사 기준. 진행 조건(50개)은 지금 받는 차수(세종 2차) 주문만 센다(1차 이월분 제외).
   const list = orders;
   const count = s => list.filter(o => o.status === s).length;
-  // 입금 확인 완료 합계에는 수령 포기(입금은 받음)도 넣는다. 수령일별 수량은 실제로 나눠 줄 것만.
-  const paid = list.filter(o => ['paid','picked_up','forfeited'].includes(o.status));
   const live = list.filter(o => !['cancelled','refunded'].includes(o.status));
-  const byDate = {};
-  for (const o of list.filter(o => ['paid','picked_up'].includes(o.status))) {const k = `${EVENTS[o.event]?.name ?? o.event} ${pickupDateLabel(o.event, o.pickupDate)}`;byDate[k] = (byDate[k] || 0) + o.quantity;}
+  const box = (k, v, sub) => `<div><span>${esc(k)}</span><strong>${esc(v)}</strong>${sub ? `<small>${esc(sub)}</small>` : ''}</div>`;
+  const pending = [['입금 확인 요청', `${count('verification_requested')}건`], ['입금 대기', `${count('payment_pending')}건`], ['취소 확인 요청', `${count('cancel_requested')}건`]];
+  if (scope !== 'sejong') {
+    const paid = list.filter(o => PAID_LIKE.includes(o.status));
+    const byDate = {};
+    for (const o of list.filter(o => [...GIVE,'picked_up'].includes(o.status))) {const k = pickupDateLabel(o.event, o.pickupDate);byDate[k] = (byDate[k] || 0) + o.quantity;}
+    $('#order-plan').hidden = true;
+    $('#summary').innerHTML = [...pending, ['진행 중 주문 수량', `${qtyOf(live)}개`], ['입금 확인 완료', `${paid.length}건 · ${qtyOf(paid)}개 · ${won(paid.reduce((a, o) => a + o.totalAmount, 0))}`],
+      ...Object.entries(byDate).map(([k, q]) => [`수령 ${k}`, `${q}개`])].map(([k, v]) => box(k, v)).join('');
+    return;
+  }
+  // 세종: 2차 신규 주문(발주할 수량)과 1차 이월분(1차에 이미 발주·입금, 재고로 가져감)을 나눠 맨 위에 보여준다.
+  const fresh = live.filter(o => o.round === CURRENT_ROUND), carry = live.filter(o => carried(o) && [...GIVE,'picked_up'].includes(o.status));
+  const freshPaid = fresh.filter(o => PAID_LIKE.includes(o.status)), freshUnpaid = fresh.filter(o => UNPAID.includes(o.status));
+  const freshOther = fresh.filter(o => !PAID_LIKE.includes(o.status) && !UNPAID.includes(o.status));
+  const dates = EVENTS.sejong.dates.map(d => {
+    const n = qtyOf(freshPaid.filter(o => o.pickupDate === d.value)), c = qtyOf(carry.filter(o => o.pickupDate === d.value));
+    return `<li><span>${esc(d.label)}</span><b>${n + c}개</b><small>신규 ${n} · 이월 ${c}</small></li>`;
+  }).join('');
+  $('#order-plan').hidden = false;
+  $('#order-plan').innerHTML = `
+    <div class="plan-main"><span>2차 신규 발주 수량 <small>입금 확인 기준</small></span><strong>${qtyOf(freshPaid)}개</strong>
+      <small>${freshPaid.length}건 · ${won(freshPaid.reduce((a, o) => a + o.totalAmount, 0))}${freshUnpaid.length ? ` · 미입금 ${freshUnpaid.length}건 ${qtyOf(freshUnpaid)}개 포함하면 ${qtyOf(freshPaid) + qtyOf(freshUnpaid)}개` : ''}${freshOther.length ? ` · 취소 확인 요청 ${qtyOf(freshOther)}개 별도` : ''}</small></div>
+    <div><span>1차 이월 <small>발주 안 함 · 1차 재고</small></span><strong>${qtyOf(carry)}개</strong><small>${carry.length}건 · 인뮤페에서 세종 수령으로 옮김</small></div>
+    <div><span>세종 현장 전달 예정</span><strong>${qtyOf(freshPaid.filter(o => o.status !== 'forfeited')) + qtyOf(carry)}개</strong><ul class="plan-dates">${dates}</ul></div>`;
   $('#summary').innerHTML = [
-    ['입금 확인 요청', `${count('verification_requested')}건`],
-    ['입금 대기', `${count('payment_pending')}건`],
-    ['취소 확인 요청', `${count('cancel_requested')}건`],
-    scope === 'sejong'
-      ? ['2차 진행 중 주문 수량 (최소 50개)', `${live.filter(o => o.round === CURRENT_ROUND).reduce((a, o) => a + o.quantity, 0)}개 / ${GROUP_BUY.minTotalQuantity}개`]
-      : ['진행 중 주문 수량', `${live.reduce((a, o) => a + o.quantity, 0)}개`],
-    scope === 'sejong' && ['다음 청원 참여 동의', `${new Set(live.filter(o => o.logs.some(l => l.note?.includes('다음 청원 참여 동의'))).map(o => o.userId)).size}명`],
-    ['입금 확인 완료', `${paid.length}건 · ${paid.reduce((a, o) => a + o.quantity, 0)}개 · ${won(paid.reduce((a, o) => a + o.totalAmount, 0))}`],
-    ...Object.entries(byDate).map(([k, q]) => [`수령 ${k}`, `${q}개`]),
-  ].filter(Boolean).map(([k, v]) => `<div><span>${esc(k)}</span><strong>${esc(v)}</strong></div>`).join('');
+    ...pending,
+    ['2차 진행 중 주문 수량 (최소 50개)', `${qtyOf(fresh)}개 / ${GROUP_BUY.minTotalQuantity}개`],
+    ['다음 청원 참여 동의', `${new Set(fresh.filter(o => o.logs.some(l => l.note?.includes('다음 청원 참여 동의'))).map(o => o.userId)).size}명`],
+  ].map(([k, v]) => box(k, v)).join('');
 }
 // 입금 확인을 한 번에 누를 수 있는 상태(사용자가 아직 입금 확인 전)
 const CAN_CONFIRM = ['payment_pending','verification_requested'];
@@ -69,13 +94,14 @@ const logList = o => `<ol>${o.logs.map(l => `<li>${time(l.createdAt)} ${l.actor 
 const quickButton = o => CAN_CONFIRM.includes(o.status) ? `<button class="primary quick" data-quick-paid>입금 확인 완료</button>` : '';
 /** 상태 빠른 필터. 누르면 상태 선택과 같은 효과. */
 function renderChips() {
-  const current = $('#status-filter').value, n = s => orders.filter(o => o.status === s).length;
-  $('#status-chips').innerHTML = [['verification_requested'], ['payment_pending'], ['paid'], ['cancel_requested'], ['', '전체', orders.length]]
+  const current = $('#status-filter').value, n = s => orders.filter(o => matchStatus(o, s)).length;
+  const chips = [['verification_requested'], ['payment_pending'], ['paid', scope === 'sejong' ? '2차 입금 확인 완료' : undefined], scope === 'sejong' && ['carried_over'], ['cancel_requested'], ['', '전체', orders.length]].filter(Boolean);
+  $('#status-chips').innerHTML = chips
     .map(([v, label = ORDER_STATUS[v], count = n(v)]) => (v && !count && v !== current) ? '' : `<button type="button" data-chip="${v}" aria-pressed="${v === current}">${esc(label)} <b>${count}</b></button>`).join('');
 }
 function renderOrders() {
   const status = $('#status-filter').value, q = $('#search').value.trim().toLowerCase();
-  const rows = orders.filter(o => (!status || o.status === status) && (!q || [o.id, o.nickname, o.payerName].some(v => v.toLowerCase().includes(q))));
+  const rows = orders.filter(o => matchStatus(o, status) && (!q || [o.id, o.nickname, o.payerName].some(v => v.toLowerCase().includes(q))));
   shownRows = rows;
   renderChips();
   // 넓은 화면: 표
@@ -84,12 +110,12 @@ function renderOrders() {
     <td>${esc(o.id)} <small class="muted">${o.round}차</small><details><summary>기록 ${o.logs.length}</summary>${logList(o)}</details></td>
     <td>${esc(o.nickname)}</td><td><strong>${esc(o.payerName)}</strong></td><td class="num">${o.quantity}</td><td class="num">${won(o.totalAmount)}</td>
     <td>${esc(EVENTS[o.event]?.name ?? o.event)}<br><small class="muted">${esc(pickupDateLabel(o.event, o.pickupDate))}${carried(o) ? ' · 1차 이월' : ''}</small></td>
-    <td><span class="status s-${esc(o.status)}">${esc(ORDER_STATUS[o.status] ?? o.status)}</span>${quickButton(o)}</td><td>${time(o.createdAt)}</td>
+    <td>${statusBadge(o)}${quickButton(o)}</td><td>${time(o.createdAt)}</td>
     <td><div class="act">${statusSelect(o)}<input placeholder="메모 (예: 입금 확인)" maxlength="200" aria-label="메모" data-note><button class="primary" data-save>저장</button></div>${moveControl(o)}</td>
   </tr>`).join('') || '<tr><td colspan="10" class="muted">주문이 없어요.</td></tr>';
   // 폰: 카드. 입금자명·금액을 크게 띄워 통장 내역과 바로 맞춰 보고, 입금 확인은 버튼 하나로.
   $('#order-cards').innerHTML = rows.map(o => `<li class="ocard ${picked.has(o.id) ? 'is-picked' : ''}" data-id="${esc(o.id)}">
-    <div class="oc-top"><label class="oc-pick"><input type="checkbox" data-pick-order="${esc(o.id)}" ${picked.has(o.id) ? 'checked' : ''} aria-label="${esc(o.nickname)} ${esc(o.id)} 메시지 보낼 사람으로 선택"></label><span class="status s-${esc(o.status)}">${esc(ORDER_STATUS[o.status] ?? o.status)}</span><small>${esc(o.id)} · ${o.round}차</small></div>
+    <div class="oc-top"><label class="oc-pick"><input type="checkbox" data-pick-order="${esc(o.id)}" ${picked.has(o.id) ? 'checked' : ''} aria-label="${esc(o.nickname)} ${esc(o.id)} 메시지 보낼 사람으로 선택"></label>${statusBadge(o)}<small>${esc(o.id)} · ${o.round}차</small></div>
     <div class="oc-main"><strong>${esc(o.payerName)}</strong><strong class="oc-amt">${won(o.totalAmount)}</strong></div>
     <p class="oc-sub">${esc(o.nickname)} · ${o.quantity}개 · ${esc(SCOPES[o.event] ?? o.event)} ${esc(pickupDateLabel(o.event, o.pickupDate))}${carried(o) ? ' · 1차 이월' : ''} · ${time(o.createdAt)}</p>
     ${quickButton(o)}
@@ -174,6 +200,7 @@ document.querySelectorAll('[data-scope]').forEach(b => b.addEventListener('click
   applyScope();fillPrintDates();picked.clear();
   $('#pk-q').value = '';pickedUser = null;
   renderSummary();renderOrders();renderPickup();
+  if (ledger) renderLedger();
 }));
 $('#search').addEventListener('input', renderOrders);
 $('#reload').addEventListener('click', () => loadOrders().then(() => toast('새로고침했어요.')).catch(e => toast(e.message)));
@@ -203,7 +230,7 @@ ordersBox.addEventListener('click', async e => {
 $('#csv').addEventListener('click', () => {
   const head = ['주문번호','차수','닉네임','입금자명','수량','금액','행사','수령일','상태','접수시각','수정시각'];
   const cell = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const lines = [head, ...orders.map(o => [o.id, ROUND_LABEL[o.round] ?? o.round, o.nickname, o.payerName, o.quantity, o.totalAmount, EVENTS[o.event]?.name ?? o.event, o.pickupDate ?? '', ORDER_STATUS[o.status] ?? o.status, time(o.createdAt), time(o.updatedAt)])].map(r => r.map(cell).join(','));
+  const lines = [head, ...orders.map(o => [o.id, ROUND_LABEL[o.round] ?? o.round, o.nickname, o.payerName, o.quantity, o.totalAmount, EVENTS[o.event]?.name ?? o.event, o.pickupDate ?? '', statusLabel(o), time(o.createdAt), time(o.updatedAt)])].map(r => r.map(cell).join(','));
   const blob = new Blob(['﻿' + lines.join('\r\n')], {type:'text/csv;charset=utf-8'});
   const a = Object.assign(document.createElement('a'), {href:URL.createObjectURL(blob), download:`orders-${scope}-${new Date().toISOString().slice(0,10)}.csv`});
   a.click();URL.revokeObjectURL(a.href);
@@ -249,13 +276,13 @@ function personOf(userId) {
     userId, orders:mine,
     nickname:mine.at(-1)?.nickname ?? '',
     payers:[...new Set(mine.map(o => o.payerName))],
-    give:mine.filter(o => o.status === 'paid'),
+    give:mine.filter(o => GIVE.includes(o.status)),
     done:mine.filter(o => o.status === 'picked_up'),
     unpaid:mine.filter(o => PENDING.includes(o.status)),
   };
 }
 function renderPickupStats() {
-  const today = kstDay(), live = orders.filter(o => ['paid','picked_up'].includes(o.status));
+  const today = kstDay(), live = orders.filter(o => [...GIVE,'picked_up'].includes(o.status));
   const todays = live.filter(o => o.pickupDate === today), done = o => o.status === 'picked_up';
   const waiting = new Set(todays.filter(o => !done(o)).map(o => o.userId)).size;
   $('#pk-stats').innerHTML = [
@@ -270,7 +297,7 @@ function pickupCard(p) {
   const line = o => {
     const [cls, note] = o.status === 'picked_up' ? ['is-done', `수령 완료 · ${time(pickedAt(o) ?? o.updatedAt)}`]
       : PENDING.includes(o.status) ? ['is-stop', '입금 미확인 · 전달 금지']
-      : o.status === 'paid' ? (o.pickupDate !== today ? ['is-other', '수령일이 오늘이 아님'] : ['', ''])
+      : GIVE.includes(o.status) ? (o.pickupDate !== today ? ['is-other', '수령일이 오늘이 아님'] : ['', ''])
       : ['is-done', `${ORDER_STATUS[o.status] ?? o.status} · 전달 안 함`];
     return `<li class="pk-line ${cls}"><code>${idHTML(o.id)}</code><span class="pk-date">${esc(pickupDateLabel(o.event, o.pickupDate))}${carried(o) ? ' · 1차' : ''}</span><span class="pk-qty">${o.quantity}개</span>${note ? `<span class="pk-note">${esc(note)}</span>` : ''}</li>`;
   };
@@ -400,7 +427,7 @@ $('#pk-print').addEventListener('click', () => {
   const rows = [...new Set(ofDay.map(o => o.userId))].flatMap(id => {
     const mine = ofDay.filter(o => o.userId === id);
     const who = {payer:[...new Set(mine.map(o => o.payerName))].join(' / '), nickname:mine.at(-1).nickname};
-    const give = mine.filter(o => ['paid','picked_up'].includes(o.status)), unpaid = mine.filter(o => PENDING.includes(o.status));
+    const give = mine.filter(o => [...GIVE,'picked_up'].includes(o.status)), unpaid = mine.filter(o => PENDING.includes(o.status));
     return [give.length && {...who, list:give, unpaid:false}, unpaid.length && {...who, list:unpaid, unpaid:true}].filter(Boolean);
   }).map(r => ({...r, qty:sumQty(r.list)}))
     .sort((a, b) => b.qty - a.qty || a.nickname.localeCompare(b.nickname, 'ko') || a.unpaid - b.unpaid);
@@ -424,7 +451,12 @@ const signed = n => `${n > 0 ? '+' : n < 0 ? '−' : ''}${Math.abs(n).toLocaleSt
 const dayTime = iso => new Date(iso).toLocaleString('ko-KR',{timeZone:'Asia/Seoul',year:'numeric',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
 let ledger = null;
 function renderLedger() {
-  const {summary:s, entries} = ledger;
+  // 고른 행사의 차수만. 통장은 하나라 전체 잔액도 같이 보여준다.
+  const round = SCOPE_ROUND[scope], s = ledger.byRound[round], entries = ledger.entries.filter(e => e.round === round);
+  $('#ledger-title').textContent = `${ROUND_LABEL[round]} 정산`;
+  $('#ledger-note').textContent = round === 1
+    ? '1차 주문(인뮤페에서 받은 주문, 세종으로 옮긴 1차 이월분 포함)의 입금과 1차 발주 내역이에요.'
+    : '2차 신규 주문의 입금과 2차 발주 내역이에요. 1차 이월분은 1차에 입금·발주해서 1차 정산에 들어가요.';
   const rows = [
     ['주문 입금 (입금 확인 완료)', s.orderIncome.amount, `${s.orderIncome.count}건 · ${s.orderIncome.quantity}개`],
     ['운영자 개인 자금 투입', s.advance, ''],
@@ -433,12 +465,14 @@ function renderLedger() {
     s.reimbursed ? ['개인 자금 돌려받음', -s.reimbursed, ''] : null,
     s.otherOut ? ['기타 지출', -s.otherOut, ''] : null,
   ].filter(Boolean);
-  $('#flow').innerHTML = `<h3>돈 흐름</h3>${rows.map(([k, v, sub]) => `<div class="flow-row"><span>${esc(k)}${sub ? `<small>${esc(sub)}</small>` : ''}</span><strong class="${v < 0 ? 'out' : 'in'}">${signed(v)}</strong></div>`).join('')}
-    <div class="flow-row total"><span>공구 통장 잔액 (계산)<small>실제 통장 잔액과 맞는지 확인하세요</small></span><strong>${won(s.balance)}</strong></div>`;
+  $('#flow').innerHTML = `<h3>${esc(ROUND_LABEL[round])} 돈 흐름</h3>${rows.map(([k, v, sub]) => `<div class="flow-row"><span>${esc(k)}${sub ? `<small>${esc(sub)}</small>` : ''}</span><strong class="${v < 0 ? 'out' : 'in'}">${signed(v)}</strong></div>`).join('')}
+    <div class="flow-row total"><span>${esc(ROUND_LABEL[round])} 잔액 (계산)</span><strong>${won(s.balance)}</strong></div>
+    <div class="flow-row"><span>공구 통장 전체 잔액 (1차 + 2차, 계산)<small>실제 통장 잔액과 맞는지 확인하세요</small></span><strong>${won(ledger.summary.balance)}</strong></div>`;
   $('#flow-notes').innerHTML = [
     ['아직 돌려받지 않은 개인 자금', won(s.outstandingAdvance), s.outstandingAdvance > 0 ? '이후 들어오는 주문 입금으로 돌려받을 돈' : ''],
-    ['발주 수량 − 입금 확인 수량', `${s.unmatchedQuantity}개`, s.unmatchedQuantity > 0 ? '예비·미입금·추후 주문분' : s.unmatchedQuantity < 0 ? '입금 확인 수량이 발주보다 많아요. 추가 발주가 필요해요' : ''],
+    ['발주 수량 − 입금 확인 수량', `${s.unmatchedQuantity}개`, s.unmatchedQuantity > 0 ? '예비·미입금·추후 주문분' : s.unmatchedQuantity < 0 ? `입금 확인 수량이 발주보다 ${-s.unmatchedQuantity}개 많아요. 발주하면 업체 결제로 적어주세요` : ''],
   ].map(([k, v, sub]) => `<div><span>${esc(k)}</span><strong>${esc(v)}</strong>${sub ? `<small>${esc(sub)}</small>` : ''}</div>`).join('');
+  $('#ledger-form [data-round]').textContent = `${ROUND_LABEL[round]}에 추가`;
   $('#ledger-rows').innerHTML = entries.map(e => {
     const [label, sign] = LEDGER_KIND[e.kind] ?? [e.kind, 1];
     return `<tr><td>${dayTime(e.occurredAt)}</td><td>${esc(label)}</td><td class="num ${sign < 0 ? 'out' : 'in'}">${signed(sign * e.amount)}</td><td class="num">${e.quantity ?? ''}</td><td>${esc(e.memo)}</td><td><button class="ghost small" data-del="${e.id}">삭제</button></td></tr>`;
@@ -453,11 +487,12 @@ const toInt = v => {const t = String(v).replace(/[,\s원개]/g, '');return t ===
 $('#ledger-form').addEventListener('submit', async e => {
   e.preventDefault();
   const f = e.target, btn = f.querySelector('button');
-  const body = {kind:f.kind.value, occurredAt:`${f.occurredAt.value}:00+09:00`, amount:toInt(f.amount.value), quantity:toInt(f.quantity.value), memo:f.memo.value};
+  const round = SCOPE_ROUND[scope];
+  const body = {kind:f.kind.value, round, occurredAt:`${f.occurredAt.value}:00+09:00`, amount:toInt(f.amount.value), quantity:toInt(f.quantity.value), memo:f.memo.value};
   if (!Number.isInteger(body.amount) || body.amount < 1) {toast('금액을 숫자로 입력해주세요.');return;}
   if (Number.isNaN(body.quantity)) {toast('수량은 숫자로 입력해주세요.');return;}
   const [label, sign] = LEDGER_KIND[body.kind];
-  if (!confirm(`${label} ${signed(sign * body.amount)}${body.quantity !== null ? ` · ${body.quantity}개` : ''}\n추가할까요?`)) return;
+  if (!confirm(`[${ROUND_LABEL[round]} 정산] ${label} ${signed(sign * body.amount)}${body.quantity !== null ? ` · ${body.quantity}개` : ''}\n추가할까요?`)) return;
   await busy(btn, async () => {
     try {await api('POST', '/api/admin/ledger', body);f.amount.value = f.quantity.value = f.memo.value = '';await loadLedger();toast('추가했어요.');}
     catch (err) {toast(err.message);}

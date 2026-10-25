@@ -5,13 +5,14 @@
   <meta name="robots" content="noindex">
   <title>운영자 화면 | 춤은 불법이 아니다</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%23161616'/%3E%3Ctext x='32' y='48' text-anchor='middle' font-size='49' fill='%238fd8ff'%3E✳︎%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/admin.css?v=18"><script type="module" src="/admin.js?v=21"></script>
+  <link rel="stylesheet" href="/admin.css?v=20"><script type="module" src="/admin.js?v=23"></script>
 </head>
 <body>
   <header class="bar"><a href="/" class="brand">춤은 불법이 아니다 <small>운영자</small></a><div class="scope" role="group" aria-label="행사"><button data-scope="sejong" aria-pressed="true">세종</button><button data-scope="inmufe" aria-pressed="false">인뮤페</button></div><nav><button data-tab="orders" class="tab active">주문</button><button data-tab="pickup" class="tab">현장 수령</button><button data-tab="threads" class="tab">문의 <span id="thread-unread" class="badge" hidden></span></button><button data-tab="ledger" class="tab">정산</button></nav><span id="who"></span></header>
   <main>
     <p id="gate" class="gate" role="status"><span class="spinner" aria-hidden="true"></span> 불러오는 중이에요</p>
     <section id="orders" hidden>
+      <div id="order-plan" class="plan" hidden></div>
       <div id="summary" class="summary"></div>
       <div class="chips" id="status-chips" role="group" aria-label="상태 빠른 필터"></div>
       <div class="filters"><select id="status-filter" aria-label="상태"><option value="">전체 상태</option></select><input id="search" type="search" placeholder="주문번호·닉네임·입금자명 검색" aria-label="검색"><button id="reload" class="ghost">새로고침</button><button id="csv" class="ghost">CSV 내려받기</button></div>
@@ -36,12 +37,14 @@
       <div id="pk-results" class="pk-results" aria-live="polite"></div>
     </section>
     <section id="ledger" hidden>
+      <h2 class="ledger-title" id="ledger-title">정산</h2>
+      <p class="muted small" id="ledger-note"></p>
       <div class="ledger-top">
         <div class="flow" id="flow"></div>
         <div class="flow-notes" id="flow-notes"></div>
       </div>
       <form id="ledger-form" class="ledger-form">
-        <strong>내역 추가</strong>
+        <strong data-round>내역 추가</strong>
         <select name="kind" aria-label="종류" required>
           <option value="vendor_payment">업체 결제 (나감)</option>
           <option value="advance">운영자 개인 자금 투입 (들어옴)</option>
