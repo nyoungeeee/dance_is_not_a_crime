@@ -330,7 +330,8 @@ test('정산 장부: 운영자만, 입금 확인 주문과 업체 결제·개인
 
   const admin = new Client();
   await admin.login('9999');
-  const before = (await admin.json('GET', '/api/admin/ledger')).body.summary;
+  const beforeAll = (await admin.json('GET', '/api/admin/ledger')).body;
+  const before = beforeAll.summary, before1 = beforeAll.byRound[1], before2 = beforeAll.byRound[2];
   const o = (await user.json('POST', '/api/orders', ORDER)).body.order;
   await admin.json('POST', `/api/admin/orders/${o.id}/status`, { status: 'paid' });
 
@@ -361,6 +362,17 @@ test('정산 장부: 운영자만, 입금 확인 주문과 업체 결제·개인
   const after = (await admin.json('GET', '/api/admin/ledger')).body;
   assert.ok(!after.entries.some((e: any) => e.id === advanceId));
   assert.equal(after.summary.balance - before.balance, -15900);
+
+  // 차수별 정산: ORDER는 2차 주문, 차수를 안 보낸 내역은 지금 차수(2차)로 들어간다
+  assert.equal((await admin.json('POST', '/api/admin/ledger', { kind: 'advance', amount: 1, round: 9, occurredAt: '2026-10-13T08:55:00+09:00' })).status, 400);
+  r = await admin.json('POST', '/api/admin/ledger', { kind: 'other_in', amount: 700, round: 1, occurredAt: '2026-10-13T09:00:00+09:00' });
+  assert.equal(r.body.entry.round, 1);
+  const split = (await admin.json('GET', '/api/admin/ledger')).body;
+  assert.equal(split.byRound[1].otherIn - before1.otherIn, 700);
+  assert.equal(split.byRound[2].vendor.amount - before2.vendor.amount, vendorAmount);
+  assert.equal(split.byRound[2].orderIncome.amount - before2.orderIncome.amount, o.totalAmount);
+  assert.equal(split.byRound[1].orderIncome.amount, before1.orderIncome.amount);
+  assert.equal(split.byRound[1].balance + split.byRound[2].balance, split.summary.balance);
 });
 
 test('현장 수령: 입금 확인 주문만 전달, 여러 건 한 번에·전부 아니면 하나도 안 바뀜, 동시 전달은 한 번만, 되돌리기', async () => {

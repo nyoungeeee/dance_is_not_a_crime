@@ -14,6 +14,15 @@ main{padding:20px}
 .summary{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px}
 .summary div{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:10px 14px;min-width:120px}
 .summary span{display:block;font-size:11px;color:var(--muted)}.summary strong{font-size:18px}
+/* 세종 발주 요약: 2차 신규(발주) / 1차 이월(발주 안 함) / 전달 예정 */
+.plan{display:grid;grid-template-columns:1.3fr 1fr 1.2fr;gap:10px;margin-bottom:12px}
+.plan>div{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 16px;display:flex;flex-direction:column;gap:2px}
+.plan>div>span{font-size:12px;color:var(--muted)}.plan>div>span small{margin-left:4px;opacity:.8}
+.plan>div>strong{font-size:28px;font-variant-numeric:tabular-nums}.plan>div>small{font-size:12px;color:var(--muted)}
+.plan .plan-main{border-color:var(--accent);background:#152530}.plan .plan-main>strong{font-size:34px;color:var(--accent)}
+.plan-dates{list-style:none;margin:4px 0 0;padding:0;display:grid;gap:2px;font-size:13px}
+.plan-dates li{display:flex;gap:8px;align-items:baseline}.plan-dates b{font-variant-numeric:tabular-nums}.plan-dates small{color:var(--muted);font-size:11px}
+.ledger-title{margin:0 0 2px;font-size:18px}
 .filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
 .filters input{flex:1;min-width:180px}
 input,select,textarea{background:#0f1112;border:1px solid var(--line);border-radius:4px;padding:7px 10px}
@@ -27,7 +36,7 @@ th{font-size:11px;color:var(--muted);font-weight:600;background:#181c1e}
 td.num{text-align:right;font-variant-numeric:tabular-nums}
 .status{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;background:#252b2e;white-space:nowrap}
 .s-payment_pending{background:#26343b}.s-verification_requested{background:#2f2a4a;color:#c9b8ff}.s-paid{background:#17394a;color:var(--accent)}
-.s-cancel_requested{background:#4a2a17;color:#ffb27a}.s-cancelled,.s-refunded,.s-forfeited{background:#2b2b2b;color:#999}.s-picked_up{background:#1f3a3a;color:#8fe}
+.s-cancel_requested{background:#4a2a17;color:#ffb27a}.s-cancelled,.s-refunded,.s-forfeited{background:#2b2b2b;color:#999}.s-picked_up{background:#1f3a3a;color:#8fe}.s-carried{background:#3a3320;color:#f0d58a}
 .act{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.act input{width:150px}
 details{margin-top:6px;font-size:11px;color:var(--muted)}details ol{margin:6px 0 0;padding-left:18px}
 .thread-layout{display:grid;grid-template-columns:280px 1fr;gap:16px;min-height:60vh}
@@ -65,7 +74,7 @@ details{margin-top:6px;font-size:11px;color:var(--muted)}details ol{margin:6px 0
 .ledger-form{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:6px}
 .ledger-form [name=amount],.ledger-form [name=quantity]{width:120px}.ledger-form [name=memo]{flex:1;min-width:180px}
 .ledger-table{min-width:720px}
-@media(max-width:700px){.ledger-top{grid-template-columns:1fr}}
+@media(max-width:700px){.ledger-top{grid-template-columns:1fr}.plan{grid-template-columns:1fr 1fr}.plan .plan-main{grid-column:1/-1}.plan>div{padding:10px 12px}.plan>div>strong{font-size:22px}.plan .plan-main>strong{font-size:28px}}
 [hidden]{display:none!important}
 /* 현장 수령: 노트북 기준 2열(왼쪽 검색·후보, 오른쪽 카드 한 장). 좁으면 1열. */
 #pickup:not([hidden]){display:grid;grid-template-columns:360px minmax(0,1fr) auto;grid-template-areas:"stats stats print" "side card card";gap:16px 24px;align-items:start;max-width:1200px}
