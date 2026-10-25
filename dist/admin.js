@@ -1,6 +1,6 @@
 import {api} from './api.mjs?v=2';
-import {EVENTS, pickupDateLabel} from './account-state.mjs?v=18';
-import {GROUP_BUY, CURRENT_ROUND, ORDER_STATUS} from './group-buy.mjs?v=21';
+import {EVENTS, pickupDateLabel} from './account-state.mjs?v=19';
+import {GROUP_BUY, CURRENT_ROUND, ORDER_STATUS} from './group-buy.mjs?v=22';
 // 운영자 화면. 권한은 서버가 검사한다(ADMIN_KAKAO_IDS). 이 파일은 공개돼도 데이터는 운영자에게만 내려온다.
 const $ = s => document.querySelector(s);
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -19,7 +19,7 @@ async function busy(btn, task) {
 }
 function toast(m) {$('#toast').textContent = m;$('#toast').classList.add('visible');clearTimeout(toastTimer);toastTimer = setTimeout(() => $('#toast').classList.remove('visible'), 3500);}
 
-for (const [value, label] of [...Object.entries(ORDER_STATUS), ['carried', '1차 이월 (세종으로 옮긴 1차 주문)']]) $('#status-filter').insertAdjacentHTML('beforeend', `<option value="${value}">${label}</option>`);
+for (const [value, label] of Object.entries(ORDER_STATUS)) $('#status-filter').insertAdjacentHTML('beforeend', `<option value="${value}">${label}</option>`);
 const CLOSED = ['cancelled','refunded','picked_up','forfeited'];
 const ROUND_LABEL = {1:'1차 인뮤페', 2:'2차 세종'};
 /**
@@ -39,20 +39,17 @@ function applyScope() {
 }
 /** 1차(경기) 주문을 세종 수령일로 옮긴 것. 현장 수령·명단에서 구분해 보여준다. */
 const carried = o => o.round === 1 && o.event !== 'inmufe';
-/**
- * 1차 이월분은 입금은 1차에 받았지만 2차 신규 주문과 섞이지 않게 '1차 이월'로 따로 보여준다(서버 상태는 입금 확인 완료 그대로라 현장 전달은 똑같이 된다).
- * 상태 필터 값 carried = 1차 이월, paid = 2차 신규 등 이월이 아닌 입금 확인 완료.
- */
-const isCarriedPaid = o => carried(o) && o.status === 'paid';
-const statusKey = o => isCarriedPaid(o) ? 'carried' : o.status;
-const statusLabel = o => isCarriedPaid(o) ? '1차 이월' : ORDER_STATUS[o.status] ?? o.status;
-const statusBadge = o => `<span class="status s-${esc(statusKey(o))}">${esc(statusLabel(o))}</span>`;
-const matchStatus = (o, v) => !v || (v === 'carried' ? carried(o) : statusKey(o) === v);
+// 1차 이월(carried_over): 1차에 입금받고 세종 수령으로 옮긴 주문. 2차 신규 입금 확인 완료(paid)와 상태 자체가 다르다.
+// 수령 변경으로 1차 입금 주문을 세종으로 옮기면 서버가 1차 이월로, 경기로 돌리면 입금 확인 완료로 바꾼다. 현장 전달은 둘 다 된다.
+const GIVE = ['paid','carried_over'];
+const statusLabel = o => ORDER_STATUS[o.status] ?? o.status;
+const statusBadge = o => `<span class="status s-${esc(o.status)}">${esc(statusLabel(o))}</span>`;
+const matchStatus = (o, v) => !v || o.status === v;
 // 수령 변경에 고를 수 있는 모든 행사·날짜("행사|날짜")
 const PICKUP_CHOICES = Object.entries(EVENTS).flatMap(([event, e]) => e.dates.map(d => [`${event}|${d.value}`, `${e.name} ${d.label}`]));
 
 const qtyOf = list => list.reduce((a, o) => a + o.quantity, 0);
-const PAID_LIKE = ['paid','picked_up','forfeited'];
+const PAID_LIKE = ['paid','picked_up','forfeited','carried_over'];
 const UNPAID = ['payment_pending','verification_requested'];
 function renderSummary() {
   const list = orders;
@@ -63,14 +60,14 @@ function renderSummary() {
   if (scope !== 'sejong') {
     const paid = list.filter(o => PAID_LIKE.includes(o.status));
     const byDate = {};
-    for (const o of list.filter(o => ['paid','picked_up'].includes(o.status))) {const k = pickupDateLabel(o.event, o.pickupDate);byDate[k] = (byDate[k] || 0) + o.quantity;}
+    for (const o of list.filter(o => [...GIVE,'picked_up'].includes(o.status))) {const k = pickupDateLabel(o.event, o.pickupDate);byDate[k] = (byDate[k] || 0) + o.quantity;}
     $('#order-plan').hidden = true;
     $('#summary').innerHTML = [...pending, ['진행 중 주문 수량', `${qtyOf(live)}개`], ['입금 확인 완료', `${paid.length}건 · ${qtyOf(paid)}개 · ${won(paid.reduce((a, o) => a + o.totalAmount, 0))}`],
       ...Object.entries(byDate).map(([k, q]) => [`수령 ${k}`, `${q}개`])].map(([k, v]) => box(k, v)).join('');
     return;
   }
   // 세종: 2차 신규 주문(발주할 수량)과 1차 이월분(1차에 이미 발주·입금, 재고로 가져감)을 나눠 맨 위에 보여준다.
-  const fresh = live.filter(o => o.round === CURRENT_ROUND), carry = live.filter(o => carried(o) && ['paid','picked_up'].includes(o.status));
+  const fresh = live.filter(o => o.round === CURRENT_ROUND), carry = live.filter(o => carried(o) && [...GIVE,'picked_up'].includes(o.status));
   const freshPaid = fresh.filter(o => PAID_LIKE.includes(o.status)), freshUnpaid = fresh.filter(o => UNPAID.includes(o.status));
   const freshOther = fresh.filter(o => !PAID_LIKE.includes(o.status) && !UNPAID.includes(o.status));
   const dates = EVENTS.sejong.dates.map(d => {
@@ -98,7 +95,7 @@ const quickButton = o => CAN_CONFIRM.includes(o.status) ? `<button class="primar
 /** 상태 빠른 필터. 누르면 상태 선택과 같은 효과. */
 function renderChips() {
   const current = $('#status-filter').value, n = s => orders.filter(o => matchStatus(o, s)).length;
-  const chips = [['verification_requested'], ['payment_pending'], ['paid', scope === 'sejong' ? '2차 입금 확인 완료' : undefined], scope === 'sejong' && ['carried', '1차 이월'], ['cancel_requested'], ['', '전체', orders.length]].filter(Boolean);
+  const chips = [['verification_requested'], ['payment_pending'], ['paid', scope === 'sejong' ? '2차 입금 확인 완료' : undefined], scope === 'sejong' && ['carried_over'], ['cancel_requested'], ['', '전체', orders.length]].filter(Boolean);
   $('#status-chips').innerHTML = chips
     .map(([v, label = ORDER_STATUS[v], count = n(v)]) => (v && !count && v !== current) ? '' : `<button type="button" data-chip="${v}" aria-pressed="${v === current}">${esc(label)} <b>${count}</b></button>`).join('');
 }
@@ -279,13 +276,13 @@ function personOf(userId) {
     userId, orders:mine,
     nickname:mine.at(-1)?.nickname ?? '',
     payers:[...new Set(mine.map(o => o.payerName))],
-    give:mine.filter(o => o.status === 'paid'),
+    give:mine.filter(o => GIVE.includes(o.status)),
     done:mine.filter(o => o.status === 'picked_up'),
     unpaid:mine.filter(o => PENDING.includes(o.status)),
   };
 }
 function renderPickupStats() {
-  const today = kstDay(), live = orders.filter(o => ['paid','picked_up'].includes(o.status));
+  const today = kstDay(), live = orders.filter(o => [...GIVE,'picked_up'].includes(o.status));
   const todays = live.filter(o => o.pickupDate === today), done = o => o.status === 'picked_up';
   const waiting = new Set(todays.filter(o => !done(o)).map(o => o.userId)).size;
   $('#pk-stats').innerHTML = [
@@ -300,7 +297,7 @@ function pickupCard(p) {
   const line = o => {
     const [cls, note] = o.status === 'picked_up' ? ['is-done', `수령 완료 · ${time(pickedAt(o) ?? o.updatedAt)}`]
       : PENDING.includes(o.status) ? ['is-stop', '입금 미확인 · 전달 금지']
-      : o.status === 'paid' ? (o.pickupDate !== today ? ['is-other', '수령일이 오늘이 아님'] : ['', ''])
+      : GIVE.includes(o.status) ? (o.pickupDate !== today ? ['is-other', '수령일이 오늘이 아님'] : ['', ''])
       : ['is-done', `${ORDER_STATUS[o.status] ?? o.status} · 전달 안 함`];
     return `<li class="pk-line ${cls}"><code>${idHTML(o.id)}</code><span class="pk-date">${esc(pickupDateLabel(o.event, o.pickupDate))}${carried(o) ? ' · 1차' : ''}</span><span class="pk-qty">${o.quantity}개</span>${note ? `<span class="pk-note">${esc(note)}</span>` : ''}</li>`;
   };
@@ -430,7 +427,7 @@ $('#pk-print').addEventListener('click', () => {
   const rows = [...new Set(ofDay.map(o => o.userId))].flatMap(id => {
     const mine = ofDay.filter(o => o.userId === id);
     const who = {payer:[...new Set(mine.map(o => o.payerName))].join(' / '), nickname:mine.at(-1).nickname};
-    const give = mine.filter(o => ['paid','picked_up'].includes(o.status)), unpaid = mine.filter(o => PENDING.includes(o.status));
+    const give = mine.filter(o => [...GIVE,'picked_up'].includes(o.status)), unpaid = mine.filter(o => PENDING.includes(o.status));
     return [give.length && {...who, list:give, unpaid:false}, unpaid.length && {...who, list:unpaid, unpaid:true}].filter(Boolean);
   }).map(r => ({...r, qty:sumQty(r.list)}))
     .sort((a, b) => b.qty - a.qty || a.nickname.localeCompare(b.nickname, 'ko') || a.unpaid - b.unpaid);
